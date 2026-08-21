@@ -4,19 +4,113 @@ const os = require('os');
 const express = require('express');
 const chokidar = require('chokidar');
 
-// --- Pricing ---
+// --- Pricing --- (USD per 1M tokens)
 const PRICING = {
-  'claude-opus-4-6':   { input: 15.00, output: 75.00 },
+  'claude-fable-5':    { input: 10.00, output: 50.00 },
+  'claude-mythos-5':   { input: 10.00, output: 50.00 },
+  'claude-opus-5':     { input: 5.00,  output: 25.00 },
+  'claude-opus-4-8':   { input: 5.00,  output: 25.00 },
+  'claude-opus-4-7':   { input: 5.00,  output: 25.00 },
+  'claude-opus-4-6':   { input: 5.00,  output: 25.00 },
+  'claude-sonnet-5':   { input: 3.00,  output: 15.00 }, // intro $2/$10 through 2026-08-31
   'claude-sonnet-4-6': { input: 3.00,  output: 15.00 },
-  'claude-haiku-4-5':  { input: 0.80,  output: 4.00 },
+  'claude-haiku-4-5':  { input: 1.00,  output: 5.00 },
+  // Claude Code sometimes writes a bare family name instead of a full model id.
+  'opus':              { input: 5.00,  output: 25.00 },
+  'sonnet':            { input: 3.00,  output: 15.00 },
+  'haiku':             { input: 1.00,  output: 5.00 },
 };
 
+// Cache multipliers on the base input price (Anthropic pricing).
+const CACHE_WRITE_5M = 1.25;
+const CACHE_WRITE_1H = 2.00;
+const CACHE_READ     = 0.10;
+
 function getPricing(model) {
-  if (!model) return PRICING['claude-sonnet-4-6'];
+  if (!model) return PRICING['claude-opus-5'];
   for (const [key, val] of Object.entries(PRICING)) {
     if (model.includes(key)) return val;
   }
-  return PRICING['claude-sonnet-4-6']; // fallback
+  return PRICING['claude-opus-5']; // fallback
+}
+
+// --- Context window --- (tokens)
+// Claude Code does not record the session's context limit in the JSONL, so we
+// infer it: start at the CONTEXT_WINDOW default and step up a tier once a turn
+// is observed above it (a 200K session compacts before it can exceed 200K).
+const CONTEXT_TIERS = [200_000, 1_000_000];
+const DEFAULT_CONTEXT_WINDOW = Number(process.env.CONTEXT_WINDOW) || CONTEXT_TIERS[0];
+
+// --- Retention ---
+// Sessions older than this are folded into a running total and dropped from
+// memory, so a long-lived watcher does not grow without bound.
+const RETENTION_DAYS = Number(process.env.RETENTION_DAYS) || 30;
+const SWEEP_INTERVAL_MS = 10 * 60 * 1000;
+// A file counts as "active" only if it was touched in the last few minutes.
+const ACTIVE_FILE_WINDOW_MS = 15 * 60 * 1000;
+
+// Usage from evicted sessions, so lifetime totals stay correct.
+const archived = { costUSD: 0, tokensIn: 0, tokensOut: 0, sessionCount: 0 };
+
+// Spend and tokens per calendar day, accumulated as events are parsed so it
+// survives session eviction. Key is a local YYYY-MM-DD string.
+const daily = new Map();
+const DAILY_KEEP_DAYS = 90;
+// Output tokens per model, for the "top model" readout.
+const modelTotals = new Map();
+
+function dayKey(ts) {
+  const d = new Date(ts);
+  if (isNaN(d)) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function addToDaily(ts, cost, tokensOut, tokensAll) {
+  const key = dayKey(ts);
+  if (!key) return;
+  const row = daily.get(key) || { date: key, costUSD: 0, tokensOut: 0, tokensAll: 0 };
+  row.costUSD += cost;
+  row.tokensOut += tokensOut;
+  row.tokensAll += tokensAll;
+  daily.set(key, row);
+  if (daily.size > DAILY_KEEP_DAYS + 30) {
+    for (const k of [...daily.keys()].sort().slice(0, daily.size - DAILY_KEEP_DAYS)) daily.delete(k);
+  }
+}
+
+function costOfDelta(d, p) {
+  return (d.in   * p.input  / 1_000_000) +
+         (d.out  * p.output / 1_000_000) +
+         (d.w5m  * p.input * CACHE_WRITE_5M / 1_000_000) +
+         (d.w1h  * p.input * CACHE_WRITE_1H / 1_000_000) +
+         (d.read * p.input * CACHE_READ     / 1_000_000);
+}
+
+// The per-message-id map is what makes a re-read of the same bytes harmless:
+// deltas against the stored cumulative values come out as zero. Do NOT bound it
+// by count - dropping an entry lets an old message be counted a second time.
+// It is released when the session is archived.
+// Subagent records kept per session, newest first.
+const SUBAGENT_CACHE = 50;
+
+function recomputeCost(session) {
+  let total = 0;
+  for (const [model, u] of Object.entries(session.usageByModel)) {
+    const p = getPricing(model);
+    total +=
+      (u.in   * p.input  / 1_000_000) +
+      (u.out  * p.output / 1_000_000) +
+      (u.w5m  * p.input * CACHE_WRITE_5M / 1_000_000) +
+      (u.w1h  * p.input * CACHE_WRITE_1H / 1_000_000) +
+      (u.read * p.input * CACHE_READ     / 1_000_000);
+  }
+  session.costUSD = total;
+}
+
+function getContextLimit(session) {
+  const seen = session.maxInputSeen || 0;
+  const tier = CONTEXT_TIERS.find(t => t >= seen) || CONTEXT_TIERS[CONTEXT_TIERS.length - 1];
+  return Math.max(DEFAULT_CONTEXT_WINDOW, tier);
 }
 
 // --- Session State ---
@@ -40,13 +134,15 @@ function getOrCreateSession(sessionId) {
       cacheReadIn: 0,
       costUSD: 0,
       turnCount: 0,
-      activeFiles: [],
+      activeFiles: [], // [{ name, at }] - pruned to a recent window on read
       recentLog: [],
       startedAt: null,
       lastEventAt: null,
       lastEventType: '',
       lastContentTypes: [],
+      usageByModel: {}, // model -> {in,out,w5m,w1h,read}; each model is priced at its own rate
       lastTurnInputTotal: 0, // input + cache for context window estimate
+      maxInputSeen: 0, // highest lastTurnInputTotal seen, for context-tier inference
       permissionMode: '',
       version: '',
       subagents: {}, // agentId -> { task, status, tokensOut, lastEventAt }
@@ -103,6 +199,9 @@ function processEvent(event, projectHash) {
 
   const msg = event.message || {};
   const content = msg.content;
+  // Set by the assistant block below; the subagent block reuses it so subagent
+  // tokens are not double counted when a message id is rewritten mid-stream.
+  let outputDelta = null;
   const contentTypes = Array.isArray(content)
     ? content.map(c => c.type)
     : (typeof content === 'string' ? ['text'] : []);
@@ -113,35 +212,63 @@ function processEvent(event, projectHash) {
     const usage = msg.usage;
     const seen = seenMessageIds.get(event.sessionId);
 
-    if (msg.model) session.model = msg.model;
+    // Only the main thread defines the session's model; a subagent on a cheaper
+    // model must not reprice the whole session.
+    const eventModel = msg.model || session.model;
+    if (msg.model && !event.isSidechain && !event.agentId) session.model = msg.model;
+
+    // Cache writes are billed by TTL: 1h costs 2x base input, 5m costs 1.25x.
+    const cc = usage.cache_creation || {};
+    const w1h = cc.ephemeral_1h_input_tokens || 0;
+    const totalWrite = usage.cache_creation_input_tokens || 0;
+    const w5m = cc.ephemeral_5m_input_tokens !== undefined
+      ? cc.ephemeral_5m_input_tokens
+      : Math.max(0, totalWrite - w1h);
 
     // Track per-message-id usage, only count the delta
-    const prev = seen.get(msgId) || { in: 0, out: 0, cacheCreate: 0, cacheRead: 0 };
+    const prev = seen.get(msgId) || { in: 0, out: 0, w5m: 0, w1h: 0, cacheRead: 0, counted: false };
     const curr = {
       in: usage.input_tokens || 0,
       out: usage.output_tokens || 0,
-      cacheCreate: usage.cache_creation_input_tokens || 0,
+      w5m,
+      w1h,
       cacheRead: usage.cache_read_input_tokens || 0,
+      counted: prev.counted,
     };
 
     // Add only the difference (later events for same msgId have cumulative values)
-    session.tokensIn += Math.max(0, curr.in - prev.in);
-    session.tokensOut += Math.max(0, curr.out - prev.out);
-    session.cacheCreationIn += Math.max(0, curr.cacheCreate - prev.cacheCreate);
-    session.cacheReadIn += Math.max(0, curr.cacheRead - prev.cacheRead);
+    const d = {
+      in: Math.max(0, curr.in - prev.in),
+      out: Math.max(0, curr.out - prev.out),
+      w5m: Math.max(0, curr.w5m - prev.w5m),
+      w1h: Math.max(0, curr.w1h - prev.w1h),
+      read: Math.max(0, curr.cacheRead - prev.cacheRead),
+    };
+
+    outputDelta = d.out;
+    session.tokensIn += d.in;
+    session.tokensOut += d.out;
+    session.cacheCreationIn += d.w5m + d.w1h;
+    session.cacheReadIn += d.read;
+
+    // Bucket the same delta under the model that actually produced it
+    const bucket = session.usageByModel[eventModel]
+      || (session.usageByModel[eventModel] = { in: 0, out: 0, w5m: 0, w1h: 0, read: 0 });
+    bucket.in += d.in;
+    bucket.out += d.out;
+    bucket.w5m += d.w5m;
+    bucket.w1h += d.w1h;
+    bucket.read += d.read;
 
     seen.set(msgId, curr);
 
     // Track last turn's total input for context window estimate
-    session.lastTurnInputTotal = curr.in + curr.cacheCreate + curr.cacheRead;
+    session.lastTurnInputTotal = curr.in + curr.w5m + curr.w1h + curr.cacheRead;
+    session.maxInputSeen = Math.max(session.maxInputSeen, session.lastTurnInputTotal);
 
-    // Recalculate cost
-    const pricing = getPricing(session.model);
-    session.costUSD =
-      (session.tokensIn * pricing.input / 1_000_000) +
-      (session.tokensOut * pricing.output / 1_000_000) +
-      (session.cacheCreationIn * pricing.input * 0.25 / 1_000_000) +
-      (session.cacheReadIn * pricing.input * 0.10 / 1_000_000);
+    recomputeCost(session);
+    addToDaily(ts, costOfDelta(d, getPricing(eventModel)), d.out, d.in + d.out + d.w5m + d.w1h + d.read);
+    modelTotals.set(eventModel, (modelTotals.get(eventModel) || 0) + d.out);
 
     // Log tool use
     if (Array.isArray(content)) {
@@ -157,17 +284,19 @@ function processEvent(event, projectHash) {
           addToRecentLog(session, { time: ts, type: 'think', msg: snippet });
         }
       }
-      // Track active files
+      // Track active files, newest first, with the time each was last touched
       const newFiles = extractActiveFiles(content);
       if (newFiles.length) {
-        const fileSet = new Set([...newFiles, ...session.activeFiles]);
-        session.activeFiles = [...fileSet].slice(0, 10);
+        const kept = session.activeFiles.filter(f => !newFiles.includes(f.name));
+        session.activeFiles = [...newFiles.map(name => ({ name, at: ts })), ...kept].slice(0, 20);
       }
     }
 
-    // Count turns by unique message IDs with stop_reason
-    if (msg.stop_reason) {
+    // Count turns by unique message IDs with stop_reason. Claude Code rewrites
+    // the same message id as it streams, so counting every event roughly doubles it.
+    if (msg.stop_reason && !prev.counted) {
       session.turnCount++;
+      curr.counted = true;
     }
   }
 
@@ -190,9 +319,18 @@ function processEvent(event, projectHash) {
       if (text) sub.task = text.substring(0, 120);
     }
 
-    // Track subagent output tokens
-    if (event.type === 'assistant' && msg.usage && msg.stop_reason) {
-      sub.tokensOut += msg.usage.output_tokens || 0;
+    // Track subagent output tokens (delta only - see outputDelta above)
+    if (outputDelta !== null) {
+      sub.tokensOut += outputDelta;
+    }
+
+    // Keep only the most recent subagents; a long session spawns many.
+    const aids = Object.keys(session.subagents);
+    if (aids.length > SUBAGENT_CACHE) {
+      aids
+        .sort((x, y) => new Date(session.subagents[y].lastEventAt || 0) - new Date(session.subagents[x].lastEventAt || 0))
+        .slice(SUBAGENT_CACHE)
+        .forEach(id => delete session.subagents[id]);
     }
   }
 
@@ -230,29 +368,66 @@ function deriveStatus(session) {
 }
 
 // --- JSONL File Processing ---
+// Files being read right now. Without this, two quick change events both start
+// at the same offset and process the same lines twice.
+const inFlight = new Set();
+// Trailing bytes of a line that was still being written when we read.
+const partialLines = new Map();
+
 function processFile(filePath) {
+  if (inFlight.has(filePath)) return;
+
   let stat;
   try { stat = fs.statSync(filePath); } catch { return; }
-  const offset = fileOffsets.get(filePath) || 0;
+
+  let offset = fileOffsets.get(filePath) || 0;
+  if (stat.size < offset) {
+    // File shrank (truncated or rotated). Rebuild this session from scratch,
+    // otherwise it would be stuck at a stale offset forever.
+    offset = 0;
+    partialLines.delete(filePath);
+    const sessionId = path.basename(filePath, '.jsonl');
+    sessions.delete(sessionId);
+    seenMessageIds.delete(sessionId);
+  }
   if (stat.size <= offset) return;
 
+  inFlight.add(filePath);
   const projectHash = path.basename(path.dirname(filePath));
-  const stream = fs.createReadStream(filePath, { start: offset, encoding: 'utf8' });
-  let buffer = '';
+  // Read to a fixed end so bytes written mid-read are not consumed twice.
+  const stream = fs.createReadStream(filePath, { start: offset, end: stat.size - 1, encoding: 'utf8' });
+  let buffer = partialLines.get(filePath) || '';
 
-  stream.on('data', (chunk) => { buffer += chunk; });
-  stream.on('end', () => {
-    fileOffsets.set(filePath, stat.size);
-    const lines = buffer.split('\n');
-    for (const line of lines) {
+  const finish = () => {
+    inFlight.delete(filePath);
+    // The file may have grown while we were reading it.
+    try {
+      if (fs.statSync(filePath).size > stat.size) processFile(filePath);
+    } catch { /* file went away */ }
+  };
+
+  stream.on('error', () => { inFlight.delete(filePath); });
+  // Parse complete lines as they arrive. Buffering the whole file first meant
+  // holding hundreds of MB of JSONL in memory during the startup replay.
+  stream.on('data', (chunk) => {
+    buffer += chunk;
+    let nl;
+    while ((nl = buffer.indexOf('\n')) !== -1) {
+      const line = buffer.slice(0, nl);
+      buffer = buffer.slice(nl + 1);
       if (!line.trim()) continue;
       try {
-        const event = JSON.parse(line);
-        processEvent(event, projectHash);
+        processEvent(JSON.parse(line), projectHash);
       } catch (e) {
         // Skip malformed lines (partial writes)
       }
     }
+  });
+  stream.on('end', () => {
+    fileOffsets.set(filePath, stat.size);
+    // Whatever is left has no newline yet: hold it until the rest arrives.
+    partialLines.set(filePath, buffer);
+    finish();
   });
 }
 
@@ -285,11 +460,21 @@ app.get('/api/sessions', (req, res) => {
     const subagentList = Object.values(session.subagents)
       .filter(s => s.status === 'thinking')
       .sort((a, b) => new Date(b.lastEventAt || 0) - new Date(a.lastEventAt || 0));
+    const { recentLog, usageByModel, ...rest } = session;
     all.push({
-      ...session,
+      ...rest,
       status,
       costUSD: Math.round(session.costUSD * 10000) / 10000,
+      contextLimit: getContextLimit(session),
       subagents: subagentList,
+      // Only files touched recently, so the list means "working on now"
+      activeFiles: session.activeFiles
+        .filter(f => Date.now() - new Date(f.at).getTime() < ACTIVE_FILE_WINDOW_MS)
+        .slice(0, 10)
+        .map(f => f.name),
+      // Logs are fetched per-card on expand; sending them all every poll was
+      // ~75% of the payload.
+      logCount: recentLog.length,
     });
   }
 
@@ -325,12 +510,74 @@ app.get('/api/sessions', (req, res) => {
     if (aToday !== bToday) return bToday - aToday; // active today first
     return (a.label || '').localeCompare(b.label || '');
   });
-  res.json(result);
+  // Totals cover every session the watcher knows about, not just the cards on
+  // screen - the list above hides all but the newest session per project.
+  let totalCost = archived.costUSD, totalOut = archived.tokensOut, totalIn = archived.tokensIn;
+  for (const session of sessions.values()) {
+    totalCost += session.costUSD;
+    totalOut += session.tokensOut;
+    totalIn += session.tokensIn;
+  }
+
+  res.json({
+    sessions: result,
+    totals: {
+      costUSD: Math.round(totalCost * 10000) / 10000,
+      tokensOut: totalOut,
+      tokensIn: totalIn,
+      sessionCount: sessions.size + archived.sessionCount,
+      shownCount: result.length,
+    },
+    usage: buildUsage(),
+    serverTime: new Date().toISOString(),
+  });
+});
+
+// Rolling spend summary for the header: today, last 7 days, last 30 days, plus
+// a day-by-day series for the sparkline.
+function buildUsage() {
+  const series = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  for (let i = DAILY_KEEP_DAYS - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const key = dayKey(d);
+    const row = daily.get(key);
+    series.push({
+      date: key,
+      costUSD: row ? row.costUSD : 0,
+      tokensOut: row ? row.tokensOut : 0,
+      tokensAll: row ? row.tokensAll : 0,
+    });
+  }
+  const sum = (n, field) => series.slice(-n).reduce((a, r) => a + r[field], 0);
+  let topModel = '', topOut = 0;
+  for (const [model, out] of modelTotals) {
+    if (out > topOut && model && model !== '<synthetic>') { topOut = out; topModel = model; }
+  }
+  return {
+    todayCost: sum(1, 'costUSD'),
+    todayTokens: sum(1, 'tokensAll'),
+    cost7d: sum(7, 'costUSD'),
+    cost30d: sum(30, 'costUSD'),
+    tokens30d: sum(30, 'tokensAll'),
+    topModel,
+    series: series.slice(-30),
+  };
+}
+
+// Per-session log, fetched only while a card is expanded.
+app.get('/api/sessions/:id/log', (req, res) => {
+  const session = sessions.get(req.params.id);
+  if (!session) return res.status(404).json({ error: 'Unknown session' });
+  res.json(session.recentLog);
 });
 
 // --- Start ---
 const WATCH_DIR = path.join(os.homedir(), '.claude', 'projects');
-const PORT = 3001;
+const PORT = Number(process.env.PORT) || 3456;
+const HOST = '127.0.0.1';
 
 console.log(`Watching: ${WATCH_DIR}`);
 console.log(`Dashboard: http://localhost:${PORT}`);
@@ -353,8 +600,30 @@ watcher.on('change', (filePath) => {
   if (shouldProcessFile(filePath)) processFile(filePath);
 });
 
-const server = app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+// Fold long-dead sessions into the archived totals and release their memory.
+function sweepOldSessions() {
+  const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  let dropped = 0;
+  for (const [id, session] of sessions) {
+    const last = session.lastEventAt ? new Date(session.lastEventAt).getTime() : 0;
+    if (last >= cutoff) continue;
+    archived.costUSD += session.costUSD;
+    archived.tokensIn += session.tokensIn;
+    archived.tokensOut += session.tokensOut;
+    archived.sessionCount++;
+    sessions.delete(id);
+    seenMessageIds.delete(id);
+    dropped++;
+  }
+  if (dropped) {
+    console.log(`Archived ${dropped} session(s) older than ${RETENTION_DAYS} days`);
+  }
+}
+setInterval(sweepOldSessions, SWEEP_INTERVAL_MS).unref();
+setTimeout(sweepOldSessions, 30_000).unref(); // after the startup replay settles
+
+const server = app.listen(PORT, HOST, () => {
+  console.log(`Server running on http://${HOST}:${PORT}`);
 });
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {

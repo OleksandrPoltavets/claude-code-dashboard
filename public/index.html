@@ -8,19 +8,19 @@
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #0a0e14;
-      --bg-card: #111820;
-      --bg-card-hover: #161d27;
-      --border: #1e2a3a;
-      --text: #c5cdd8;
-      --text-dim: #5c6a7a;
-      --text-bright: #e8edf3;
+      --bg: #11161e;
+      --bg-card: #1e2632;
+      --bg-card-hover: #27313f;
+      --border: #36435a;
+      --text: #d3dbe6;
+      --text-dim: #96a3b5;
+      --text-bright: #f0f4f9;
       --green: #00ff88;
       --yellow: #ffcc00;
-      --red: #ff4444;
-      --grey: #555;
+      --red: #ff6161;
+      --grey: #8b96a5;
       --blue: #4dabf7;
-      --bar-bg: #1a2332;
+      --bar-bg: #2b3746;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -85,14 +85,18 @@
       border: 1px solid var(--border);
       border-radius: 8px;
       padding: 16px;
-      transition: background 0.2s, border-color 0.2s;
+      transition: background 0.2s, border-color 0.2s, opacity 0.2s;
     }
     .card:hover { background: var(--bg-card-hover); }
     .card.status-thinking { border-left: 3px solid var(--green); }
     .card.status-waiting  { border-left: 3px solid var(--yellow); }
     .card.status-error    { border-left: 3px solid var(--red); }
-    .card.status-idle     { border-left: 3px solid #ff8800; opacity: 0.7; }
+    .card.status-idle     { border-left: 3px solid #ff8800; opacity: 0.92; }
     .card.status-idle-stale { border-left: 3px solid var(--border); opacity: 0.35; }
+    /* Faded cards come back to full strength on hover, so they stay readable
+       when you actually want to inspect one. */
+    .card.status-idle:hover,
+    .card.status-idle-stale:hover { opacity: 1; }
 
     .card-header {
       display: flex;
@@ -117,7 +121,7 @@
     .status-dot.waiting  { background: var(--yellow); animation: pulse 2s infinite; }
     .status-dot.error    { background: var(--red); }
     .status-dot.idle     { background: var(--grey); }
-    .status-dot.idle-stale { background: var(--border); }
+    .status-dot.idle-stale { background: var(--grey); }
 
     .card-status {
       font-size: 11px;
@@ -130,8 +134,8 @@
     .card-status.thinking { color: var(--green); background: rgba(0,255,136,0.1); }
     .card-status.waiting  { color: var(--yellow); background: rgba(255,204,0,0.1); }
     .card-status.error    { color: var(--red); background: rgba(255,68,68,0.1); }
-    .card-status.idle     { color: var(--grey); background: rgba(85,85,85,0.1); }
-    .card-status.idle-stale { color: var(--border); background: rgba(30,42,58,0.3); }
+    .card-status.idle     { color: var(--grey); background: rgba(139,150,165,0.14); }
+    .card-status.idle-stale { color: var(--text-dim); background: rgba(150,163,181,0.12); }
 
     .perm-badge {
       font-size: 10px;
@@ -244,6 +248,72 @@
       padding: 4px 0;
     }
     .log-toggle:hover { color: var(--text); }
+
+    .stale-toggle {
+      font-size: 11px;
+      font-family: inherit;
+      color: var(--text-dim);
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 3px 9px;
+      cursor: pointer;
+    }
+    .stale-toggle:hover { color: var(--text); border-color: var(--text-dim); }
+    .stale-toggle.on { color: var(--blue); border-color: var(--blue); }
+
+    .search-box {
+      font-size: 11px;
+      font-family: inherit;
+      color: var(--text);
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 3px 9px;
+      width: 150px;
+    }
+    .search-box::placeholder { color: var(--text-dim); }
+    .search-box:focus { outline: none; border-color: var(--blue); }
+
+    .usage-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      flex-wrap: wrap;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 20px;
+      margin-bottom: 16px;
+    }
+    .usage-stats { display: flex; align-items: baseline; gap: 22px; flex-wrap: wrap; }
+    .usage-item { display: flex; align-items: baseline; gap: 6px; font-size: 12px; }
+    .usage-item .k { color: var(--text-dim); }
+    .usage-item .v { color: var(--text-bright); font-weight: 500; }
+    .usage-item .v.cost { color: var(--green); }
+    .usage-model {
+      font-size: 11px;
+      color: var(--text-dim);
+      border-left: 1px solid var(--border);
+      padding-left: 22px;
+    }
+    .spark { display: flex; align-items: flex-end; gap: 2px; height: 30px; }
+    .spark-col {
+      width: 6px;
+      min-height: 1px;
+      background: var(--blue);
+      border-radius: 1px 1px 0 0;
+      opacity: 0.65;
+    }
+    .spark-col.today { background: var(--green); opacity: 1; }
+    .spark-col:hover { opacity: 1; }
+    .spark-wrap { display: flex; align-items: flex-end; gap: 10px; }
+    .spark-max { font-size: 10px; color: var(--text-dim); white-space: nowrap; }
+
+    .dot.offline { background: var(--red); animation: none; }
+    .link-state { font-size: 11px; color: var(--text-dim); }
+    .link-state.offline { color: var(--red); font-weight: 600; }
     .log-feed {
       margin-top: 8px;
       max-height: 200px;
@@ -295,10 +365,11 @@
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script>
-    const { useState, useEffect, useCallback } = React;
+    const { useState, useEffect, useCallback, useRef } = React;
     const e = React.createElement;
 
     function formatNumber(n) {
+      if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(2) + 'B';
       if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
       if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
       return String(n);
@@ -306,6 +377,17 @@
 
     function formatCost(c) {
       return '$' + c.toFixed(4);
+    }
+
+    function startedLabel(iso) {
+      if (!iso) return '-';
+      const d = new Date(iso);
+      const mins = Math.floor((Date.now() - d.getTime()) / 60000);
+      const clock = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      if (mins < 60) return clock + ' (' + mins + 'm)';
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return clock + ' (' + hrs + 'h ' + (mins % 60) + 'm)';
+      return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' ' + clock;
     }
 
     function timeAgo(iso) {
@@ -323,9 +405,14 @@
       return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
     }
 
-    function contextPercent(lastTurnInputTotal) {
-      // 200K context window
-      return Math.min(100, (lastTurnInputTotal / 200_000) * 100);
+    function contextPercent(lastTurnInputTotal, limit) {
+      return Math.min(100, (lastTurnInputTotal / (limit || 200_000)) * 100);
+    }
+
+    function formatLimit(limit) {
+      return limit >= 1_000_000
+        ? (limit / 1_000_000) + 'M'
+        : Math.round(limit / 1000) + 'K';
     }
 
     function contextBarColor(pct) {
@@ -334,10 +421,57 @@
       return 'var(--blue)';
     }
 
+    function UsageBar({ usage }) {
+      if (!usage) return null;
+      const series = usage.series || [];
+      const max = Math.max(...series.map(r => r.costUSD), 0.01);
+      const money = n => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const stat = (k, v, cost) => e('span', { className: 'usage-item' },
+        e('span', { className: 'k' }, k),
+        e('span', { className: 'v' + (cost ? ' cost' : '') }, v)
+      );
+
+      return e('div', { className: 'usage-bar' },
+        e('div', { className: 'usage-stats' },
+          stat('Today', money(usage.todayCost), true),
+          stat('7 days', money(usage.cost7d), true),
+          stat('30 days', money(usage.cost30d), true),
+          stat('Tokens today', formatNumber(usage.todayTokens)),
+          stat('30 days', formatNumber(usage.tokens30d)),
+          usage.topModel && e('span', { className: 'usage-model' }, 'mostly ' + usage.topModel)
+        ),
+        e('div', { className: 'spark-wrap' },
+          e('div', { className: 'spark' },
+            series.map((r, i) => e('div', {
+              key: r.date,
+              className: 'spark-col' + (i === series.length - 1 ? ' today' : ''),
+              style: { height: Math.max(1, (r.costUSD / max) * 30) + 'px' },
+              title: r.date + '  $' + r.costUSD.toFixed(2)
+            }))
+          ),
+          e('span', { className: 'spark-max' }, 'peak $' + max.toFixed(0))
+        )
+      );
+    }
+
     function SessionCard({ session }) {
       const [expanded, setExpanded] = useState(false);
+      const [log, setLog] = useState([]);
+
+      // The list endpoint no longer ships logs; pull them only for open cards.
+      useEffect(() => {
+        if (!expanded) return;
+        let alive = true;
+        const load = () => fetch('/api/sessions/' + session.sessionId + '/log')
+          .then(r => r.ok ? r.json() : [])
+          .then(d => { if (alive) setLog(d); })
+          .catch(() => {});
+        load();
+        const iv = setInterval(load, 2000);
+        return () => { alive = false; clearInterval(iv); };
+      }, [expanded, session.sessionId]);
       const st = session.status;
-      const pct = contextPercent(session.lastTurnInputTotal || session.tokensIn);
+      const pct = contextPercent(session.lastTurnInputTotal || session.tokensIn, session.contextLimit);
 
       return e('div', { className: 'card status-' + st },
         // Header
@@ -400,6 +534,11 @@
           e('div', { className: 'meta-item' },
             e('span', { className: 'meta-key' }, 'Last Event'),
             e('span', { className: 'meta-val' }, timeAgo(session.lastEventAt))
+          ),
+          e('div', { className: 'meta-item' },
+            e('span', { className: 'meta-key' }, 'Started'),
+            e('span', { className: 'meta-val', title: session.startedAt || '' },
+              startedLabel(session.startedAt))
           )
         ),
 
@@ -407,7 +546,7 @@
         e('div', { className: 'context-bar-container' },
           e('div', { className: 'context-bar-label' },
             e('span', null, 'Context Window'),
-            e('span', null, pct.toFixed(0) + '%')
+            e('span', null, pct.toFixed(0) + '% of ' + formatLimit(session.contextLimit || 200_000))
           ),
           e('div', { className: 'context-bar' },
             e('div', { className: 'context-bar-fill', style: {
@@ -442,10 +581,10 @@
         e('button', {
           className: 'log-toggle',
           onClick: () => setExpanded(!expanded)
-        }, expanded ? '- Hide log' : '+ Show log (' + session.recentLog.length + ')'),
+        }, expanded ? '- Hide log' : '+ Show log (' + (session.logCount || 0) + ')'),
 
         expanded ? e('div', { className: 'log-feed' },
-          session.recentLog.slice().reverse().map((entry, i) =>
+          log.slice().reverse().map((entry, i) =>
             e('div', { key: i, className: 'log-entry' },
               e('span', { className: 'log-time' }, formatTime(entry.time)),
               e('span', { className: 'log-type ' + entry.type }, entry.type),
@@ -458,39 +597,115 @@
 
     function Dashboard() {
       const [sessions, setSessions] = useState([]);
-      const [lastFetch, setLastFetch] = useState(null);
+      const [lastFetch, setLastFetch] = useState(() => Date.now());
+      const [totals, setTotals] = useState(null);
+      const [usage, setUsage] = useState(null);
+      const [now, setNow] = useState(Date.now());
+      const lastFetchRef = useRef(lastFetch);
+      lastFetchRef.current = lastFetch;
+      const [hideStale, setHideStale] = useState(() => {
+        try { return localStorage.getItem('hideStale') === '1'; } catch { return false; }
+      });
+      const [query, setQuery] = useState('');
+      const [alerts, setAlerts] = useState(() => {
+        try { return localStorage.getItem('alerts') === '1'; } catch { return false; }
+      });
+      const notified = useRef(new Set());
+
+      const toggleAlerts = useCallback(() => {
+        setAlerts(v => {
+          const next = !v;
+          try { localStorage.setItem('alerts', next ? '1' : '0'); } catch {}
+          if (next && 'Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+          }
+          return next;
+        });
+      }, []);
+
+      const toggleStale = useCallback(() => {
+        setHideStale(v => {
+          const next = !v;
+          try { localStorage.setItem('hideStale', next ? '1' : '0'); } catch {}
+          return next;
+        });
+      }, []);
 
       const fetchSessions = useCallback(() => {
         fetch('/api/sessions')
-          .then(r => r.json())
+          .then(r => { if (!r.ok) throw new Error('bad status'); return r.json(); })
           .then(data => {
-            setSessions(data);
-            setLastFetch(new Date());
+            setSessions(data.sessions || []);
+            setTotals(data.totals || null);
+            setUsage(data.usage || null);
+            const t = Date.now();
+            setLastFetch(t);
+            setNow(t);
           })
-          .catch(() => {}); // silent on error
+          .catch(() => setLastFetch(v => v)); // keep the old time so staleness shows
       }, []);
 
       useEffect(() => {
         fetchSessions();
         const iv = setInterval(fetchSessions, 2000);
-        return () => clearInterval(iv);
+        const tick = setInterval(() => setNow(n =>
+          Date.now() - lastFetchRef.current > 5000 ? Date.now() : n), 1000);
+        return () => { clearInterval(iv); clearInterval(tick); };
       }, [fetchSessions]);
 
-      const totalCost = sessions.reduce((s, x) => s + x.costUSD, 0);
-      const totalOut = sessions.reduce((s, x) => s + x.tokensOut, 0);
+      const staleMs = now - lastFetch;
+      const offline = staleMs > 10000;
+
+      const staleCount = sessions.filter(s => s.status === 'idle-stale').length;
+      const q = query.trim().toLowerCase();
+      const visible = sessions
+        .filter(s => !hideStale || s.status !== 'idle-stale')
+        .filter(s => !q || (
+          (s.label || '').toLowerCase().includes(q) ||
+          (s.gitBranch || '').toLowerCase().includes(q) ||
+          (s.model || '').toLowerCase().includes(q)
+        ));
+
+      // A session is 'waiting' when Claude has answered and wants you. Fire once
+      // per visit, and re-arm when the session goes busy again.
+      const waiting = sessions.filter(s => s.status === 'waiting');
+      useEffect(() => {
+        document.title = waiting.length
+          ? '(' + waiting.length + ') Claude Code Dashboard'
+          : 'Claude Code Dashboard';
+        const live = new Set(waiting.map(s => s.sessionId));
+        for (const id of notified.current) {
+          if (!live.has(id)) notified.current.delete(id);
+        }
+        if (!alerts || !('Notification' in window) || Notification.permission !== 'granted') return;
+        for (const s of waiting) {
+          if (notified.current.has(s.sessionId)) continue;
+          notified.current.add(s.sessionId);
+          new Notification('Claude needs you', {
+            body: s.label + (s.gitBranch ? ' (' + s.gitBranch + ')' : ''),
+            tag: s.sessionId,
+          });
+        }
+      }, [waiting.map(s => s.sessionId).join(','), alerts]);
+
+      const totalCost = totals ? totals.costUSD : sessions.reduce((s, x) => s + x.costUSD, 0);
+      const totalOut = totals ? totals.tokensOut : sessions.reduce((s, x) => s + x.tokensOut, 0);
       const activeSessions = sessions.filter(s => s.status === 'thinking' || s.status === 'waiting').length;
 
       return e('div', null,
         // Header
         e('div', { className: 'header' },
           e('div', { className: 'header-title' },
-            e('span', { className: 'dot' }),
+            e('span', { className: 'dot' + (offline ? ' offline' : '') }),
             'Claude Code Dashboard'
           ),
           e('div', { className: 'header-stats' },
             e('span', null,
               e('span', { className: 'stat-label' }, 'Sessions'),
-              e('span', { className: 'stat-value' }, activeSessions + '/' + sessions.length)
+              e('span', { className: 'stat-value' },
+                activeSessions + '/' + sessions.length +
+                (totals && totals.sessionCount > sessions.length
+                  ? ' of ' + totals.sessionCount : ''))
             ),
             e('span', null,
               e('span', { className: 'stat-label' }, 'Output'),
@@ -499,18 +714,43 @@
             e('span', null,
               e('span', { className: 'stat-label' }, 'Cost'),
               e('span', { className: 'stat-value cost' }, formatCost(totalCost))
-            )
+            ),
+            e('span', { className: 'link-state' + (offline ? ' offline' : '') },
+              offline
+                ? 'no data for ' + Math.floor(staleMs / 1000) + 's'
+                : 'live'),
+            e('input', {
+              className: 'search-box',
+              type: 'search',
+              placeholder: 'filter projects...',
+              value: query,
+              onChange: ev => setQuery(ev.target.value)
+            }),
+            staleCount > 0 && e('button', {
+              className: 'stale-toggle' + (hideStale ? ' on' : ''),
+              onClick: toggleStale,
+              title: 'Sessions with no activity today'
+            }, (hideStale ? 'show' : 'hide') + ' stale (' + staleCount + ')'),
+            e('button', {
+              className: 'stale-toggle' + (alerts ? ' on' : ''),
+              onClick: toggleAlerts,
+              title: 'Desktop notification when a session is waiting for you'
+            }, alerts ? 'alerts on' : 'alerts off')
           )
         ),
 
+        e(UsageBar, { usage }),
+
         // Cards
-        sessions.length === 0
+        visible.length === 0
           ? e('div', { className: 'empty' },
-              e('h2', null, 'No sessions detected'),
-              e('p', null, 'Start a Claude Code session in any terminal to see it here.')
+              e('h2', null, sessions.length === 0 ? 'No sessions detected' : 'Nothing matches'),
+              e('p', null, sessions.length === 0
+                ? 'Start a Claude Code session in any terminal to see it here.'
+                : 'Clear the filter, or click "show stale" to include older sessions.')
             )
           : e('div', { className: 'grid' },
-              sessions.map(s => e(SessionCard, { key: s.sessionId, session: s }))
+              visible.map(s => e(SessionCard, { key: s.sessionId, session: s }))
             )
       );
     }
