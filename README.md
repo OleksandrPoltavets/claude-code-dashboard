@@ -1,87 +1,186 @@
 # Claude Code Dashboard
 
-A lightweight localhost dashboard that monitors multiple Claude Code sessions in real-time. See token usage, costs, active tools, subagents, and session status across all your terminal instances at a glance.
+A localhost dashboard that monitors every Claude Code session at once. Spend, tokens,
+context usage, status, and activity across all your terminals on one page.
 
 ![Claude Code Dashboard screenshot](Screenshot.png)
 
+> Fork of [Stargx/claude-code-dashboard](https://github.com/Stargx/claude-code-dashboard)
+> with corrected pricing and token accounting, a smaller poll payload, and a usage header.
+> See [Changes in this fork](#changes-in-this-fork).
+
 ## Why?
 
-Claude Code has no cross-session visibility. If you're running two or more sessions in separate terminals, you have to alt-tab to check status, there's no combined token/cost view, and you can't see which session is active vs idle.
-
-This dashboard fixes that.
+Claude Code has no cross-session visibility. Running two or more sessions in separate
+terminals means alt-tabbing to check status, no combined token/cost view, and no way to
+see which session is active.
 
 ## Features
 
 - **Live session monitoring** — auto-detects all Claude Code sessions
-- **Token and cost tracking** — per-session and combined totals, with correct per-model pricing
-- **Status detection** — thinking (green), waiting (yellow), idle (grey/orange), stale (dimmed)
-- **Context window usage** — visual progress bar per session
-- **Active subagents** — see spawned subagents while they're running
-- **Active files** — see which files each session is working on
-- **Recent log feed** — expandable per-session activity log
-- **Click to open** — click a project name to open its folder
-- **Git branch display** — see which branch each session is on
-- **Permission mode badges** — YOLO and AUTO-EDIT indicators
+- **Usage header** — today / 7-day / 30-day spend, token counts, top model, 30-day sparkline
+- **Cost tracking** — per-model rates, with cache writes billed by TTL and cache reads at 0.1x
+- **Context window bar** — per session, sized to that session's actual limit
+- **Status detection** — thinking (green), waiting (yellow), idle (orange), stale (dimmed)
+- **Session start time** — clock time plus elapsed, per card
+- **Desktop alerts** — notification and tab-title count when a session waits for you
+- **Project filter and hide-stale toggle** — both persist across reloads
+- **Connection health** — red dot and last-update age if the watcher stops responding
+- **Active subagents** and **recently touched files**, per session
+- **Expandable log feed**, fetched on demand
+- **Click to open** a project folder, **git branch**, **permission mode badges**
 - **Cross-platform** — Windows, macOS, and Linux
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/Stargx/claude-code-dashboard.git
+git clone https://github.com/OleksandrPoltavets/claude-code-dashboard.git
 cd claude-code-dashboard
 npm install
 npm start
 ```
 
-Open **http://localhost:3001** in your browser.
+Open **http://localhost:3456**.
 
-That's it. The dashboard will automatically detect any running Claude Code sessions.
+Run it in its own terminal tab. Your Claude Code sessions run as normal; the dashboard
+watches them from the side.
 
-Run this in a separate terminal tab — your Claude Code sessions run in their own terminals as normal, and the dashboard monitors them all from one place.
+## Configuration
+
+All optional, all environment variables:
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `PORT` | `3456` | Port to serve on |
+| `CONTEXT_WINDOW` | `200000` | Starting context limit per session, in tokens |
+| `RETENTION_DAYS` | `30` | Sessions idle longer than this are archived |
+
+```bash
+PORT=8080 CONTEXT_WINDOW=1000000 npm start
+```
+
+### `CONTEXT_WINDOW`
+
+Claude Code does not record a session's context limit in its logs, so the dashboard
+infers it. It starts at `CONTEXT_WINDOW` and steps up to 1M once a session is seen
+using more than 200K in a single turn — a 200K session compacts before it can.
+
+Set `CONTEXT_WINDOW=1000000` if you run the 1M context tier. Otherwise every session
+reads as nearly full until it crosses 200K.
+
+### `RETENTION_DAYS`
+
+Sessions with no activity for this many days are folded into a running total and dropped
+from memory. Their spend still counts in the header; they lose their card and their log.
+This keeps memory flat on a long-running watcher.
+
+## Reading the header
+
+```
+Sessions 0/20 of 115    Output 13.4M out    Cost $2269.13
+```
+
+| Number | Meaning |
+| --- | --- |
+| `0` | Sessions busy right now — thinking or waiting for input |
+| `20` | Cards drawn on screen |
+| `115` | Every session found in the logs |
+
+Fewer cards than sessions is normal. Each time you open Claude Code in a project you
+start a new session, so a project accumulates many. Only the newest per project gets a card.
+
+The two cost figures cover different windows on purpose: the top row is **all time**,
+the usage row's `30 days` is the **last 30 days**.
 
 ## How It Works
 
 Claude Code writes JSONL session logs to `~/.claude/projects/`. The dashboard:
 
-1. **Watches** those files for changes using `chokidar`
-2. **Parses** new lines as they're appended (tail behaviour)
-3. **Serves** aggregated session state via a simple Express API
-4. **Renders** a polling dashboard that refreshes every 2 seconds
+1. **Watches** those files with `chokidar`
+2. **Parses** appended lines as they stream in, holding back any partial trailing line
+3. **Serves** aggregated state over a small Express API
+4. **Renders** a page that polls every 2 seconds
 
-No WebSockets, no build step, no cloud services. Just a Node.js process reading local files.
+No WebSockets, no build step, no cloud services. A Node.js process reading local files.
+
+Token counts are de-duplicated per message id. Claude Code rewrites the same message
+repeatedly while streaming, so counting raw events roughly doubles both turns and tokens.
+
+### API
+
+| Endpoint | Returns |
+| --- | --- |
+| `GET /api/sessions` | `{ sessions, totals, usage, serverTime }` |
+| `GET /api/sessions/:id/log` | Recent log entries for one session |
+| `POST /api/open-folder` | Opens a path in the OS file manager |
+
+Logs are served separately because they were ~75% of every poll. Fetching them only for
+expanded cards cut the payload by about 80%.
 
 ## Requirements
 
-- **Node.js** (v18 or later)
-- **Claude Code** (any version that writes JSONL session logs)
-
-## Configuration
-
-The dashboard runs on port 3001 by default. To change it, set the `PORT` environment variable:
-
-```bash
-PORT=8080 npm start
-```
+- **Node.js** v18 or later
+- **Claude Code**, any version that writes JSONL session logs
 
 ## Pricing
 
-Token costs are calculated using current Anthropic pricing. The pricing constants are in `watcher.js` — update them if pricing changes:
+Rates live in `PRICING` in `watcher.js`, in USD per 1M tokens. Update them when Anthropic's
+pricing changes:
 
 ```js
 const PRICING = {
-  "claude-sonnet-4-20250514": { input: 3.00, output: 15.00 },
-  "claude-opus-4-20250514":   { input: 15.00, output: 75.00 },
-  // ... per 1M tokens
+  'claude-opus-5':    { input: 5.00, output: 25.00 },
+  'claude-sonnet-5':  { input: 3.00, output: 15.00 },
+  'claude-haiku-4-5': { input: 1.00, output:  5.00 },
+  // ...
 };
 ```
+
+Cache tokens are multipliers on the base input rate:
+
+| Kind | Multiplier |
+| --- | --- |
+| Cache write, 5-minute TTL | 1.25x |
+| Cache write, 1-hour TTL | 2x |
+| Cache read | 0.1x |
+
+Tokens are bucketed per model, so a subagent on a cheaper model does not reprice the
+whole session.
+
+Figures are estimates from your local logs at API rates. They are not a bill, and they do
+not know about subscription plans or quotas.
+
+## Changes in this fork
+
+**Accuracy**
+
+- 1-hour cache writes were billed at 1.25x; they cost 2x
+- Tokens are bucketed per model instead of repriced by whichever model ran last
+- Turn counts and subagent tokens no longer double-count streamed message rewrites
+- Header totals cover every session, not just the cards on screen
+- Context window is per session instead of a hardcoded 200K
+
+**File reader**
+
+- Concurrent reads of the same file are locked out
+- A line still being written is held until complete instead of parsed, failed, and skipped
+- A truncated or rotated file resets instead of freezing that session
+- Lines parse as chunks arrive rather than buffering whole files
+
+**Interface**
+
+- Usage header with spend windows, token counts, top model, and a 30-day sparkline
+- Session start time, project filter, hide-stale toggle, desktop alerts
+- Connection health indicator
+- Raised text contrast; stale cards keep their fade but clear on hover
 
 ## Tech Stack
 
 - **Backend**: Node.js, Express, chokidar
-- **Frontend**: Single HTML file, React via CDN, no build step
-- **Styling**: Dark terminal aesthetic, IBM Plex Mono
+- **Frontend**: single HTML file, React via CDN, no build step
+- **Styling**: dark terminal aesthetic, IBM Plex Mono
 - **Dependencies**: 2 production packages (`express`, `chokidar`)
 
 ## License
 
-MIT
+MIT. Original work by Cold Beam Games.
