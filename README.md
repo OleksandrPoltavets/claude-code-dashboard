@@ -24,7 +24,7 @@ see which session is active.
 - **Status detection** — thinking (green), waiting (yellow), idle (orange), stale (dimmed)
 - **Session start time** — clock time plus elapsed, per card
 - **Desktop alerts** — notification and tab-title count when a session waits for you
-- **Project filter and hide-stale toggle** — both persist across reloads
+- **Project filter, hide-stale and show-all-sessions toggles** — all persist across reloads
 - **Connection health** — red dot and last-update age if the watcher stops responding
 - **Active subagents** and **recently touched files**, per session
 - **Expandable log feed**, fetched on demand
@@ -54,6 +54,7 @@ All optional, all environment variables:
 | `PORT` | `3456` | Port to serve on |
 | `CONTEXT_WINDOW` | `200000` | Starting context limit per session, in tokens |
 | `RETENTION_DAYS` | `30` | Sessions idle longer than this are archived |
+| `LOG_KEEP` | `200` | Log lines held per session |
 
 ```bash
 PORT=8080 CONTEXT_WINDOW=1000000 npm start
@@ -88,6 +89,7 @@ Sessions 0/20 of 115    Output 13.4M out    Cost $2269.13
 
 Fewer cards than sessions is normal. Each time you open Claude Code in a project you
 start a new session, so a project accumulates many. Only the newest per project gets a card.
+The `newest only` / `all sessions` button in the header switches between the two views.
 
 The two cost figures cover different windows on purpose: the top row is **all time**,
 the usage row's `30 days` is the **last 30 days**.
@@ -110,7 +112,7 @@ repeatedly while streaming, so counting raw events roughly doubles both turns an
 
 | Endpoint | Returns |
 | --- | --- |
-| `GET /api/sessions` | `{ sessions, totals, usage, serverTime }` |
+| `GET /api/sessions` | `{ sessions, totals, usage, serverTime }` — `?all=1` skips the newest-per-project collapse |
 | `GET /api/sessions/:id/log` | Recent log entries for one session |
 | `POST /api/open-folder` | Opens a path in the OS file manager |
 
@@ -171,6 +173,8 @@ not know about subscription plans or quotas.
 
 - Usage header with spend windows, token counts, top model, and a 30-day sparkline
 - Session start time, project filter, hide-stale toggle, desktop alerts
+- Show-all-sessions toggle for the older sessions a project accumulates
+- Log feed holds 200 lines instead of 30, in a taller scroll box
 - Connection health indicator
 - Raised text contrast; stale cards keep their fade but clear on hover
 

@@ -316,7 +316,7 @@
     .link-state.offline { color: var(--red); font-weight: 600; }
     .log-feed {
       margin-top: 8px;
-      max-height: 200px;
+      max-height: 420px;
       overflow-y: auto;
       font-size: 11px;
       line-height: 1.6;
@@ -606,6 +606,9 @@
       const [hideStale, setHideStale] = useState(() => {
         try { return localStorage.getItem('hideStale') === '1'; } catch { return false; }
       });
+      const [showAll, setShowAll] = useState(() => {
+        try { return localStorage.getItem('showAll') === '1'; } catch { return false; }
+      });
       const [query, setQuery] = useState('');
       const [alerts, setAlerts] = useState(() => {
         try { return localStorage.getItem('alerts') === '1'; } catch { return false; }
@@ -631,8 +634,16 @@
         });
       }, []);
 
+      const toggleShowAll = useCallback(() => {
+        setShowAll(v => {
+          const next = !v;
+          try { localStorage.setItem('showAll', next ? '1' : '0'); } catch {}
+          return next;
+        });
+      }, []);
+
       const fetchSessions = useCallback(() => {
-        fetch('/api/sessions')
+        fetch('/api/sessions' + (showAll ? '?all=1' : ''))
           .then(r => { if (!r.ok) throw new Error('bad status'); return r.json(); })
           .then(data => {
             setSessions(data.sessions || []);
@@ -643,7 +654,7 @@
             setNow(t);
           })
           .catch(() => setLastFetch(v => v)); // keep the old time so staleness shows
-      }, []);
+      }, [showAll]);
 
       useEffect(() => {
         fetchSessions();
@@ -731,6 +742,11 @@
               onClick: toggleStale,
               title: 'Sessions with no activity today'
             }, (hideStale ? 'show' : 'hide') + ' stale (' + staleCount + ')'),
+            e('button', {
+              className: 'stale-toggle' + (showAll ? ' on' : ''),
+              onClick: toggleShowAll,
+              title: 'By default only the newest idle session per project is listed'
+            }, showAll ? 'all sessions' : 'newest only'),
             e('button', {
               className: 'stale-toggle' + (alerts ? ' on' : ''),
               onClick: toggleAlerts,

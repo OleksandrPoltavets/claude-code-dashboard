@@ -92,6 +92,9 @@ function costOfDelta(d, p) {
 // It is released when the session is archived.
 // Subagent records kept per session, newest first.
 const SUBAGENT_CACHE = 50;
+// Log lines held per session. Entries are capped at 120 chars, so 200 lines is
+// ~30KB a session - only fetched when a card is expanded.
+const LOG_KEEP = Number(process.env.LOG_KEEP) || 200;
 
 function recomputeCost(session) {
   let total = 0;
@@ -154,8 +157,8 @@ function getOrCreateSession(sessionId) {
 
 function addToRecentLog(session, entry) {
   session.recentLog.push(entry);
-  if (session.recentLog.length > 30) {
-    session.recentLog = session.recentLog.slice(-30);
+  if (session.recentLog.length > LOG_KEEP) {
+    session.recentLog = session.recentLog.slice(-LOG_KEEP);
   }
 }
 
@@ -494,7 +497,10 @@ app.get('/api/sessions', (req, res) => {
     }
   }
 
-  const result = [...active, ...latestIdleByLabel.values()];
+  // ?all=1 skips the collapse and returns every session the watcher holds.
+  const result = req.query.all === '1'
+    ? all
+    : [...active, ...latestIdleByLabel.values()];
   // Sort: active today first (alphabetical), then inactive today (alphabetical)
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
