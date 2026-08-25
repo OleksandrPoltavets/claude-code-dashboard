@@ -164,6 +164,19 @@
       gap: 6px;
       font-size: 11px;
       padding: 3px 0;
+      width: 100%;
+      background: none;
+      border: none;
+      color: inherit;
+      font-family: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .subagent:hover { background: rgba(255,255,255,0.04); }
+    .subagent-caret {
+      color: var(--text-dim);
+      flex-shrink: 0;
+      min-width: 8px;
     }
     .subagent-dot {
       width: 6px; height: 6px;
@@ -171,7 +184,15 @@
       flex-shrink: 0;
     }
     .subagent-dot.thinking { background: var(--green); animation: pulse 1.5s infinite; }
-    .subagent-dot.idle { background: var(--grey); }
+    .subagent-dot.done { background: var(--grey); }
+    /* Never colour alone: the dot is always paired with this word. */
+    .subagent-status {
+      flex-shrink: 0;
+      min-width: 30px;
+      font-weight: 500;
+    }
+    .subagent-status.thinking { color: var(--green); }
+    .subagent-status.done { color: var(--text-dim); }
     .subagent-task {
       color: var(--text-dim);
       overflow: hidden;
@@ -183,6 +204,36 @@
       color: var(--text-dim);
       flex-shrink: 0;
     }
+    .subagent-detail {
+      margin: 2px 0 8px 12px;
+      padding-left: 8px;
+      border-left: 1px solid var(--border);
+    }
+    .subagent-summary {
+      font-size: 11px;
+      color: var(--text-dim);
+      padding: 2px 0 4px;
+    }
+    .subagent-report {
+      font-size: 11px;
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 340px;
+      overflow-y: auto;
+      margin: 4px 0 6px;
+    }
+    .subagent-steps-toggle {
+      background: none;
+      border: none;
+      padding: 2px 0;
+      font-family: inherit;
+      font-size: 11px;
+      color: var(--text-dim);
+      cursor: pointer;
+    }
+    .subagent-steps-toggle:hover { color: var(--text); }
+    .subagent-detail .log-feed { max-height: 240px; }
 
     .card-meta {
       display: grid;
@@ -405,6 +456,15 @@
       return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
     }
 
+    function formatDuration(ms) {
+      if (!ms || ms < 0) return '';
+      const secs = Math.round(ms / 1000);
+      if (secs < 60) return secs + 's';
+      const mins = Math.floor(secs / 60);
+      if (mins < 60) return mins + 'm ' + (secs % 60) + 's';
+      return Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm';
+    }
+
     function contextPercent(lastTurnInputTotal, limit) {
       return Math.min(100, (lastTurnInputTotal / (limit || 200_000)) * 100);
     }
@@ -451,6 +511,75 @@
           ),
           e('span', { className: 'spark-max' }, 'peak $' + max.toFixed(0))
         )
+      );
+    }
+
+    function SubagentRow({ sessionId, sub }) {
+      const [open, setOpen] = useState(false);
+      const [detail, setDetail] = useState(null);
+      // A running agent has no report yet, so its steps are what you watch.
+      const [showSteps, setShowSteps] = useState(sub.status === 'thinking');
+
+      // Transcripts are read from disk on click; keep polling only while it runs.
+      useEffect(() => {
+        if (!open) return;
+        let alive = true;
+        const load = () => fetch('/api/sessions/' + sessionId + '/subagents/' + sub.agentId)
+          .then(r => r.ok ? r.json() : null)
+          .then(d => { if (alive && d) setDetail(d); })
+          .catch(() => {});
+        load();
+        if (sub.status !== 'thinking') return () => { alive = false; };
+        const iv = setInterval(load, 2000);
+        return () => { alive = false; clearInterval(iv); };
+      }, [open, sessionId, sub.agentId, sub.status]);
+
+      const label = sub.status === 'thinking' ? 'run' : 'done';
+
+      return e('div', null,
+        e('button', {
+          className: 'subagent',
+          onClick: () => setOpen(!open),
+        },
+          e('span', { className: 'subagent-caret' }, open ? '-' : '+'),
+          e('span', { className: 'subagent-dot ' + sub.status }),
+          e('span', { className: 'subagent-status ' + sub.status }, label),
+          e('span', { className: 'subagent-task' }, sub.task || sub.agentId),
+          e('span', { className: 'subagent-tokens' }, formatNumber(sub.tokensOut) + ' out')
+        ),
+
+        open ? e('div', { className: 'subagent-detail' },
+          e('div', { className: 'subagent-summary' },
+            [
+              sub.agentType,
+              sub.model,
+              sub.toolCount ? sub.toolCount + ' tools' : '',
+              formatDuration(detail ? detail.durationMs : 0),
+            ].filter(Boolean).join(' \u00b7 ')
+          ),
+          !detail ? e('div', { className: 'subagent-summary' }, 'Loading...') : null,
+
+          detail && detail.result
+            ? e('div', { className: 'subagent-report' }, detail.result)
+            : null,
+
+          detail ? e('button', {
+            className: 'subagent-steps-toggle',
+            onClick: () => setShowSteps(!showSteps),
+          }, (showSteps ? '- steps' : '+ steps (' + detail.steps.length + ')')) : null,
+
+          detail && showSteps
+            ? e('div', { className: 'log-feed' },
+                detail.steps.slice().reverse().map((entry, i) =>
+                  e('div', { key: i, className: 'log-entry' },
+                    e('span', { className: 'log-time' }, formatTime(entry.time)),
+                    e('span', { className: 'log-type ' + entry.type }, entry.type),
+                    e('span', { className: 'log-msg' }, entry.msg)
+                  )
+                )
+              )
+            : null
+        ) : null
       );
     }
 
@@ -567,12 +696,8 @@
         session.subagents && session.subagents.length > 0
           ? e('div', { className: 'subagents' },
               e('div', { className: 'subagents-header' }, 'Subagents (' + session.subagents.length + ')'),
-              session.subagents.map((sub, i) =>
-                e('div', { key: i, className: 'subagent' },
-                  e('span', { className: 'subagent-dot ' + sub.status }),
-                  e('span', { className: 'subagent-task' }, sub.task || sub.agentId),
-                  e('span', { className: 'subagent-tokens' }, formatNumber(sub.tokensOut) + ' out')
-                )
+              session.subagents.map(sub =>
+                e(SubagentRow, { key: sub.agentId, sessionId: session.sessionId, sub })
               )
             )
           : null,

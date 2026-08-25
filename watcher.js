@@ -92,6 +92,12 @@ function costOfDelta(d, p) {
 // It is released when the session is archived.
 // Subagent records kept per session, newest first.
 const SUBAGENT_CACHE = 50;
+// A subagent counts as running while it wrote within this window.
+const SUBAGENT_ACTIVE_MS = 15_000;
+// Directory Claude Code writes subagent transcripts into, beside the session file.
+const SUBAGENT_DIR = 'subagents';
+// Steps returned for one subagent transcript, newest kept.
+const SUBAGENT_STEP_LIMIT = 300;
 // Log lines held per session. Entries are capped at 120 chars, so 200 lines is
 // ~30KB a session - only fetched when a card is expanded.
 const LOG_KEEP = Number(process.env.LOG_KEEP) || 200;
@@ -108,6 +114,11 @@ function recomputeCost(session) {
       (u.read * p.input * CACHE_READ     / 1_000_000);
   }
   session.costUSD = total;
+}
+
+function deriveSubagentStatus(sub) {
+  const last = sub.lastEventAt ? new Date(sub.lastEventAt).getTime() : 0;
+  return Date.now() - last < SUBAGENT_ACTIVE_MS ? 'thinking' : 'done';
 }
 
 function getContextLimit(session) {
@@ -148,7 +159,7 @@ function getOrCreateSession(sessionId) {
       maxInputSeen: 0, // highest lastTurnInputTotal seen, for context-tier inference
       permissionMode: '',
       version: '',
-      subagents: {}, // agentId -> { task, status, tokensOut, lastEventAt }
+      subagents: {}, // agentId -> see the subagent block in processEvent
     });
     seenMessageIds.set(sessionId, new Map()); // messageId -> {in, out, cacheCreate, cacheRead}
   }
@@ -307,14 +318,30 @@ function processEvent(event, projectHash) {
   if (event.agentId && !event.agentId.startsWith('acompact')) {
     const aid = event.agentId;
     if (!session.subagents[aid]) {
-      session.subagents[aid] = { agentId: aid, task: '', status: 'idle', tokensOut: 0, lastEventAt: null };
+      session.subagents[aid] = {
+        agentId: aid,
+        task: '',
+        agentType: '',
+        model: '',
+        tokensOut: 0,
+        toolCount: 0,
+        startedAt: ts,
+        lastEventAt: null,
+      };
     }
     const sub = session.subagents[aid];
     sub.lastEventAt = ts;
 
-    // Derive subagent status
-    const subElapsed = Date.now() - new Date(ts).getTime();
-    sub.status = subElapsed < 15_000 ? 'thinking' : 'idle';
+    if (event.attributionAgent && !sub.agentType) sub.agentType = event.attributionAgent;
+    if (msg.model) sub.model = msg.model;
+
+    // Count the tools it ran. The closing report is read from the transcript
+    // on demand, so it is not held here.
+    if (event.type === 'assistant' && Array.isArray(content)) {
+      for (const block of content) {
+        if (block.type === 'tool_use') sub.toolCount++;
+      }
+    }
 
     // Capture task from first user message
     if (!sub.task && event.type === 'user' && msg.role === 'user') {
@@ -396,7 +423,12 @@ function processFile(filePath) {
   if (stat.size <= offset) return;
 
   inFlight.add(filePath);
-  const projectHash = path.basename(path.dirname(filePath));
+  // A subagent transcript sits at <hash>/<sessionId>/subagents/<file>, so its
+  // project hash is three levels up, not one.
+  const parent = path.dirname(filePath);
+  const projectHash = path.basename(parent) === SUBAGENT_DIR
+    ? path.basename(path.dirname(path.dirname(parent)))
+    : path.basename(parent);
   // Read to a fixed end so bytes written mid-read are not consumed twice.
   const stream = fs.createReadStream(filePath, { start: offset, end: stat.size - 1, encoding: 'utf8' });
   let buffer = partialLines.get(filePath) || '';
@@ -459,10 +491,14 @@ app.get('/api/sessions', (req, res) => {
   const all = [];
   for (const session of sessions.values()) {
     const status = deriveStatus(session);
-    // Convert subagents object to sorted array, only include active ones
+    // Convert subagents object to a list, running first, then newest. A
+    // finished agent stays in the list so its transcript is still reachable.
     const subagentList = Object.values(session.subagents)
-      .filter(s => s.status === 'thinking')
-      .sort((a, b) => new Date(b.lastEventAt || 0) - new Date(a.lastEventAt || 0));
+      .map(sub => ({ ...sub, status: deriveSubagentStatus(sub) }))
+      .sort((a, b) => {
+        if ((a.status === 'thinking') !== (b.status === 'thinking')) return a.status === 'thinking' ? -1 : 1;
+        return new Date(b.lastEventAt || 0) - new Date(a.lastEventAt || 0);
+      });
     const { recentLog, usageByModel, ...rest } = session;
     all.push({
       ...rest,
@@ -578,6 +614,83 @@ app.get('/api/sessions/:id/log', (req, res) => {
   const session = sessions.get(req.params.id);
   if (!session) return res.status(404).json({ error: 'Unknown session' });
   res.json(session.recentLog);
+});
+
+// One line of a subagent transcript, in the same shape as recentLog entries.
+function describeTool(block) {
+  const input = block.input || {};
+  const arg = input.file_path || input.path || input.pattern || input.command || input.url || '';
+  if (!arg || typeof arg !== 'string') return block.name;
+  const short = (input.file_path || input.path) ? path.basename(arg) : arg;
+  return `${block.name}: ${short.substring(0, 100)}`;
+}
+
+// Full transcript of one subagent, read from disk only when its row is opened.
+app.get('/api/sessions/:id/subagents/:agentId', async (req, res) => {
+  const session = sessions.get(req.params.id);
+  if (!session) return res.status(404).json({ error: 'Unknown session' });
+
+  const agentId = req.params.agentId;
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(agentId)) {
+    return res.status(400).json({ error: 'Bad agent id' });
+  }
+  const sub = session.subagents[agentId];
+  if (!sub) return res.status(404).json({ error: 'Unknown subagent' });
+
+  // Built from validated parts, then checked to be inside the watched tree.
+  const file = path.join(WATCH_DIR, session.projectHash, session.sessionId, SUBAGENT_DIR, `agent-${agentId}.jsonl`);
+  if (path.relative(WATCH_DIR, file).startsWith('..')) {
+    return res.status(400).json({ error: 'Bad path' });
+  }
+
+  let raw;
+  try {
+    raw = await fs.promises.readFile(file, 'utf8');
+  } catch {
+    return res.status(404).json({ error: 'No transcript on disk' });
+  }
+
+  const steps = [];
+  // The agent's closing text is its report; keep it whole and separate.
+  let result = '';
+  let resultStep = -1;
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
+    let event;
+    try { event = JSON.parse(line); } catch { continue; }
+    const msg = event.message || {};
+    const content = msg.content;
+    if (event.type !== 'assistant' || !Array.isArray(content)) continue;
+    for (const block of content) {
+      if (block.type === 'tool_use') {
+        steps.push({ time: event.timestamp, type: 'tool', msg: describeTool(block) });
+      } else if (block.type === 'text' && block.text.trim()) {
+        result = block.text;
+        resultStep = steps.length;
+        steps.push({ time: event.timestamp, type: 'think', msg: block.text.substring(0, 300) });
+      }
+    }
+  }
+
+  // The report is shown on its own, so drop its duplicate feed entry.
+  if (resultStep === steps.length - 1) steps.pop();
+  else result = ''; // the agent stopped mid-tool: no closing report yet
+
+  const started = sub.startedAt ? new Date(sub.startedAt).getTime() : 0;
+  const ended = sub.lastEventAt ? new Date(sub.lastEventAt).getTime() : 0;
+  res.json({
+    agentId,
+    agentType: sub.agentType,
+    model: sub.model,
+    status: deriveSubagentStatus(sub),
+    task: sub.task,
+    tokensOut: sub.tokensOut,
+    toolCount: sub.toolCount,
+    durationMs: started && ended ? ended - started : 0,
+    result,
+    truncated: steps.length > SUBAGENT_STEP_LIMIT,
+    steps: steps.slice(-SUBAGENT_STEP_LIMIT),
+  });
 });
 
 // --- Start ---

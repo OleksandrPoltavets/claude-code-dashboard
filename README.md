@@ -26,7 +26,9 @@ see which session is active.
 - **Desktop alerts** — notification and tab-title count when a session waits for you
 - **Project filter, hide-stale and show-all-sessions toggles** — all persist across reloads
 - **Connection health** — red dot and last-update age if the watcher stops responding
-- **Active subagents** and **recently touched files**, per session
+- **Subagents** — every one the session spawned, running or finished. Click a row for its
+  full report, with the tool-by-tool feed one click away
+- **Recently touched files**, per session
 - **Expandable log feed**, fetched on demand
 - **Click to open** a project folder, **git branch**, **permission mode badges**
 - **Cross-platform** — Windows, macOS, and Linux
@@ -114,10 +116,12 @@ repeatedly while streaming, so counting raw events roughly doubles both turns an
 | --- | --- |
 | `GET /api/sessions` | `{ sessions, totals, usage, serverTime }` — `?all=1` skips the newest-per-project collapse |
 | `GET /api/sessions/:id/log` | Recent log entries for one session |
+| `GET /api/sessions/:id/subagents/:agentId` | Summary, report, and step feed for one subagent |
 | `POST /api/open-folder` | Opens a path in the OS file manager |
 
 Logs are served separately because they were ~75% of every poll. Fetching them only for
-expanded cards cut the payload by about 80%.
+expanded cards cut the payload by about 80%. Subagent transcripts are read from
+`~/.claude/projects/<hash>/<session>/subagents/agent-<id>.jsonl` on click, for the same reason.
 
 ## Requirements
 
@@ -177,6 +181,16 @@ not know about subscription plans or quotas.
 - Log feed holds 200 lines instead of 30, in a taller scroll box
 - Connection health indicator
 - Raised text contrast; stale cards keep their fade but clear on hover
+- Subagent rows survive the agent finishing, labelled `run` / `done` by word and by colour,
+  and open to the agent's full report; step feed collapsed unless the agent is still running
+
+**Subagents**
+
+- Finished subagents stayed in memory but were filtered out of the API, so a session usually
+  showed none
+- The report was capped at 400 characters; it is now served whole from the transcript
+- A subagent transcript lives one directory deeper than a session log, so its events set the
+  session's project label to `subagents`
 
 ## Tech Stack
 
