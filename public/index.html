@@ -37,8 +37,10 @@
     /* --- Header --- */
     .header {
       display: flex;
+      flex-wrap: wrap;
       justify-content: space-between;
       align-items: center;
+      gap: 12px;
       padding: 16px 20px;
       background: var(--bg-card);
       border: 1px solid var(--border);
@@ -65,7 +67,9 @@
     }
     .header-stats {
       display: flex;
-      gap: 24px;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px 24px;
       font-size: 13px;
     }
     .stat-label { color: var(--text-dim); margin-right: 6px; }
@@ -75,7 +79,7 @@
     /* --- Grid --- */
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr));
       gap: 16px;
     }
 
@@ -339,6 +343,8 @@
       border-radius: 4px;
       padding: 3px 9px;
       width: 150px;
+      max-width: 100%;
+      min-width: 0;
     }
     .search-box::placeholder { color: var(--text-dim); }
     .search-box:focus { outline: none; border-color: var(--blue); }
@@ -425,6 +431,29 @@
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: var(--bg-card); }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* --- Narrow screens --- */
+    @media (max-width: 720px) {
+      #root { padding: 12px; }
+      .header {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 12px 14px;
+      }
+      .header-stats { gap: 8px 16px; font-size: 12px; }
+      /* Search takes a full row so the toggles below it stay readable. */
+      .search-box { flex: 1 1 100%; width: auto; }
+      .usage-bar { padding: 10px 14px; gap: 12px; }
+      .usage-stats { gap: 8px 16px; }
+      .usage-model { border-left: none; padding-left: 0; }
+      /* The sparkline plus its label is wider than a phone; let the label drop. */
+      .spark-wrap { flex-wrap: wrap; max-width: 100%; }
+      .card { padding: 12px; }
+    }
+    /* Touch devices need bigger controls; mouse-only keeps the compact look. */
+    @media (hover: none) {
+      .stale-toggle, .search-box { min-height: 32px; padding: 6px 10px; }
+    }
   </style>
 </head>
 <body>
