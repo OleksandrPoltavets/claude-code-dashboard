@@ -26,8 +26,8 @@ see which session is active.
 - **Desktop alerts** — notification and tab-title count when a session waits for you
 - **Project filter, hide-stale and show-all-sessions toggles** — all persist across reloads
 - **Connection health** — red dot and last-update age if the watcher stops responding
-- **Subagents** — every one the session spawned, running or finished. Click a row for its
-  full report, with the tool-by-tool feed one click away
+- **Subagents** — every one the session spawned, running or finished. Click a row for the
+  full brief it was given and its full report, with the tool-by-tool feed one click away
 - **Recently touched files**, per session
 - **Expandable log feed**, fetched on demand
 - **Click to open** a project folder, **git branch**, **permission mode badges**

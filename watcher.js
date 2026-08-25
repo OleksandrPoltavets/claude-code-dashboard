@@ -654,12 +654,18 @@ app.get('/api/sessions/:id/subagents/:agentId', async (req, res) => {
   // The agent's closing text is its report; keep it whole and separate.
   let result = '';
   let resultStep = -1;
+  // The opening user message is the brief it was given, in full.
+  let task = '';
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue;
     let event;
     try { event = JSON.parse(line); } catch { continue; }
     const msg = event.message || {};
     const content = msg.content;
+    if (!task && event.type === 'user' && typeof content === 'string' && content.trim()) {
+      task = content;
+      continue;
+    }
     if (event.type !== 'assistant' || !Array.isArray(content)) continue;
     for (const block of content) {
       if (block.type === 'tool_use') {
@@ -683,7 +689,7 @@ app.get('/api/sessions/:id/subagents/:agentId', async (req, res) => {
     agentType: sub.agentType,
     model: sub.model,
     status: deriveSubagentStatus(sub),
-    task: sub.task,
+    task: task || sub.task,
     tokensOut: sub.tokensOut,
     toolCount: sub.toolCount,
     durationMs: started && ended ? ended - started : 0,

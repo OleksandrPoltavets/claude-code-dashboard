@@ -223,6 +223,23 @@
       overflow-y: auto;
       margin: 4px 0 6px;
     }
+    .subagent-task-full {
+      font-size: 11px;
+      color: var(--text-dim);
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 140px;
+      overflow-y: auto;
+      margin: 4px 0 6px;
+      padding-left: 6px;
+      border-left: 2px solid var(--border);
+    }
+    .subagent-block-label {
+      font-size: 10px;
+      color: var(--text-dim);
+      letter-spacing: 0.5px;
+      margin-top: 6px;
+    }
     .subagent-steps-toggle {
       background: none;
       border: none;
@@ -558,6 +575,17 @@
             ].filter(Boolean).join(' \u00b7 ')
           ),
           !detail ? e('div', { className: 'subagent-summary' }, 'Loading...') : null,
+
+          detail && detail.task
+            ? e(React.Fragment, null,
+                e('div', { className: 'subagent-block-label' }, 'TASK'),
+                e('div', { className: 'subagent-task-full' }, detail.task)
+              )
+            : null,
+
+          detail && detail.result
+            ? e('div', { className: 'subagent-block-label' }, 'REPORT')
+            : null,
 
           detail && detail.result
             ? e('div', { className: 'subagent-report' }, detail.result)
