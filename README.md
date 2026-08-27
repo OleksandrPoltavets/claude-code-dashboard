@@ -28,6 +28,9 @@ see which session is active.
 - **Connection health** — red dot and last-update age if the watcher stops responding
 - **Subagents** — every one the session spawned, running or finished. Click a row for the
   full brief it was given and its full report, with the tool-by-tool feed one click away
+- **Background tasks** — anything the session pushed to the background. These leave no
+  trace in the session log, so their output files are read directly; click a row for the
+  tail of the output
 - **Recently touched files**, per session
 - **Expandable log feed**, fetched on demand
 - **Click to open** a project folder, **git branch**, **permission mode badges**
@@ -57,6 +60,7 @@ All optional, all environment variables:
 | `CONTEXT_WINDOW` | `200000` | Starting context limit per session, in tokens |
 | `RETENTION_DAYS` | `30` | Sessions idle longer than this are archived |
 | `LOG_KEEP` | `200` | Log lines held per session |
+| `TASK_DIR` | `/tmp/claude-<uid>`, or `<temp>/claude` on Windows | Where Claude Code writes background task output |
 
 ```bash
 PORT=8080 CONTEXT_WINDOW=1000000 npm start
@@ -117,11 +121,19 @@ repeatedly while streaming, so counting raw events roughly doubles both turns an
 | `GET /api/sessions` | `{ sessions, totals, usage, serverTime }` — `?all=1` skips the newest-per-project collapse |
 | `GET /api/sessions/:id/log` | Recent log entries for one session |
 | `GET /api/sessions/:id/subagents/:agentId` | Summary, report, and step feed for one subagent |
+| `GET /api/sessions/:id/tasks/:taskId` | Status, exit code, and output tail for one background task |
 | `POST /api/open-folder` | Opens a path in the OS file manager |
 
 Logs are served separately because they were ~75% of every poll. Fetching them only for
 expanded cards cut the payload by about 80%. Subagent transcripts are read from
 `~/.claude/projects/<hash>/<session>/subagents/agent-<id>.jsonl` on click, for the same reason.
+
+A background task's output is never streamed to the JSONL. The session log records only
+that one was started and, later, a `queue-operation` notification that it finished - so
+the live output has to come from elsewhere. Claude Code writes it to
+`/tmp/claude-<uid>/<hash>/<session>/tasks/<taskId>.output`, and appends
+`[exited with code N]` or `[killed]` when one ends. A task with neither marker that has
+been silent for ten minutes is shown as `quiet`, not `run`.
 
 ## Requirements
 

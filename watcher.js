@@ -98,6 +98,31 @@ const SUBAGENT_ACTIVE_MS = 15_000;
 const SUBAGENT_DIR = 'subagents';
 // Steps returned for one subagent transcript, newest kept.
 const SUBAGENT_STEP_LIMIT = 300;
+// Background tasks - a Bash call with run_in_background, or an agent moved to
+// background execution - write their output beside the session in the temp
+// tree, not into the JSONL. The session log records only the start and a
+// finished notification, so live output has to be read from that directory.
+// Windows has no uid, and Claude Code puts the tree straight under the user's
+// temp directory there.
+const TASK_ROOT = process.env.TASK_DIR || (typeof process.getuid === 'function'
+  ? path.join('/tmp', `claude-${process.getuid()}`)
+  : path.join(os.tmpdir(), 'claude'));
+// Only recently active sessions are scanned: the temp output is short lived and
+// a task can only still be running under a live session.
+const TASK_LOOKBACK_MS = 6 * 60 * 60 * 1000;
+const TASK_CACHE_MS = 3_000;
+// Bytes tailed for the status probe, and for the detail view.
+const TASK_PROBE_BYTES = 400;
+// A task with no exit line that has written nothing for this long is reported
+// as quiet, not running: a killed task never writes its exit line.
+const TASK_QUIET_MS = 10 * 60 * 1000;
+const TASK_TAIL_BYTES = 20_000;
+// Claude Code closes a background task's output with one of these: a clean exit
+// carries its code, a terminated one does not.
+const TASK_EXIT_RE = /\[exited with code (-?\d+)\]\s*$/;
+const TASK_KILLED_RE = /\[killed\]\s*$/;
+const TASK_END_RE = /\[(?:exited with code -?\d+|killed)\]\s*$/;
+
 // Log lines held per session. Entries are capped at 120 chars, so 200 lines is
 // ~30KB a session - only fetched when a card is expanded.
 const LOG_KEEP = Number(process.env.LOG_KEEP) || 200;
@@ -119,6 +144,75 @@ function recomputeCost(session) {
 function deriveSubagentStatus(sub) {
   const last = sub.lastEventAt ? new Date(sub.lastEventAt).getTime() : 0;
   return Date.now() - last < SUBAGENT_ACTIVE_MS ? 'thinking' : 'done';
+}
+
+// Cached per session so a 2s poll does not stat the same files every time.
+const taskCache = new Map(); // sessionId -> { at, list }
+
+function readTail(file, bytes, size) {
+  const start = Math.max(0, size - bytes);
+  const len = size - start;
+  if (len <= 0) return '';
+  const fd = fs.openSync(file, 'r');
+  try {
+    const buf = Buffer.alloc(len);
+    fs.readSync(fd, buf, 0, len, start);
+    return buf.toString('utf8');
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function taskDir(session) {
+  return path.join(TASK_ROOT, session.projectHash, session.sessionId, 'tasks');
+}
+
+function describeTask(name, st, tail) {
+  const m = tail.match(TASK_EXIT_RE);
+  const killed = TASK_KILLED_RE.test(tail);
+  // The closing marker is already reported as the status, so the preview shows
+  // the last line of real output instead.
+  const lines = tail.split('\n').map(l => l.trim())
+    .filter(l => l && !TASK_END_RE.test(l));
+  const quiet = Date.now() - st.mtime.getTime() > TASK_QUIET_MS;
+  return {
+    taskId: name.slice(0, -'.output'.length),
+    status: m ? 'done' : killed ? 'killed' : (quiet ? 'quiet' : 'running'),
+    exitCode: m ? Number(m[1]) : null,
+    bytes: st.size,
+    updatedAt: st.mtime.toISOString(),
+    lastLine: (lines[lines.length - 1] || '').substring(0, 120),
+  };
+}
+
+function listBackgroundTasks(session) {
+  const cached = taskCache.get(session.sessionId);
+  if (cached && Date.now() - cached.at < TASK_CACHE_MS) return cached.list;
+
+  const dir = taskDir(session);
+  const list = [];
+  let names = [];
+  try {
+    names = fs.readdirSync(dir);
+  } catch { /* no tasks for this session */ }
+  for (const name of names) {
+    if (!name.endsWith('.output')) continue;
+    try {
+      // A subagent's entry here is a symlink to its transcript, and it already
+      // has a row under Subagents.
+      const st = fs.lstatSync(path.join(dir, name));
+      if (!st.isFile()) continue;
+      list.push(describeTask(name, st, readTail(path.join(dir, name), TASK_PROBE_BYTES, st.size)));
+    } catch { /* file went away mid-scan */ }
+  }
+  list.sort((a, b) => {
+    const rank = x => (x.status === 'running' ? 0 : x.status === 'quiet' ? 1 : 2);
+    // 'done' and 'killed' both mean ended, so they share the last rank.
+    if (rank(a) !== rank(b)) return rank(a) - rank(b);
+    return new Date(b.updatedAt) - new Date(a.updatedAt);
+  });
+  taskCache.set(session.sessionId, { at: Date.now(), list });
+  return list;
 }
 
 function getContextLimit(session) {
@@ -506,6 +600,9 @@ app.get('/api/sessions', (req, res) => {
       costUSD: Math.round(session.costUSD * 10000) / 10000,
       contextLimit: getContextLimit(session),
       subagents: subagentList,
+      backgroundTasks: Date.now() - new Date(session.lastEventAt || 0).getTime() < TASK_LOOKBACK_MS
+        ? listBackgroundTasks(session)
+        : [],
       // Only files touched recently, so the list means "working on now"
       activeFiles: session.activeFiles
         .filter(f => Date.now() - new Date(f.at).getTime() < ACTIVE_FILE_WINDOW_MS)
@@ -699,6 +796,34 @@ app.get('/api/sessions/:id/subagents/:agentId', async (req, res) => {
   });
 });
 
+// Tail of one background task's output, read from the temp tree on demand.
+app.get('/api/sessions/:id/tasks/:taskId', (req, res) => {
+  const session = sessions.get(req.params.id);
+  if (!session) return res.status(404).json({ error: 'Unknown session' });
+
+  const taskId = req.params.taskId;
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(taskId)) {
+    return res.status(400).json({ error: 'Bad task id' });
+  }
+  const dir = taskDir(session);
+  const file = path.join(dir, `${taskId}.output`);
+
+  let st;
+  try {
+    st = fs.lstatSync(file);
+  } catch {
+    return res.status(404).json({ error: 'No output on disk' });
+  }
+  if (!st.isFile()) return res.status(404).json({ error: 'No output on disk' });
+
+  const output = readTail(file, TASK_TAIL_BYTES, st.size);
+  res.json({
+    ...describeTask(`${taskId}.output`, st, output),
+    truncated: st.size > TASK_TAIL_BYTES,
+    output,
+  });
+});
+
 // --- Start ---
 const WATCH_DIR = path.join(os.homedir(), '.claude', 'projects');
 const PORT = Number(process.env.PORT) || 3456;
@@ -738,6 +863,7 @@ function sweepOldSessions() {
     archived.sessionCount++;
     sessions.delete(id);
     seenMessageIds.delete(id);
+    taskCache.delete(id);
     dropped++;
   }
   if (dropped) {

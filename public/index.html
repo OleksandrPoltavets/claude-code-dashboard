@@ -189,14 +189,20 @@
     }
     .subagent-dot.thinking { background: var(--green); animation: pulse 1.5s infinite; }
     .subagent-dot.done { background: var(--grey); }
+    .subagent-dot.running { background: var(--green); animation: pulse 1.5s infinite; }
+    .subagent-dot.quiet { background: var(--yellow); }
+    .subagent-dot.killed { background: var(--red); }
     /* Never colour alone: the dot is always paired with this word. */
     .subagent-status {
       flex-shrink: 0;
-      min-width: 30px;
+      min-width: 46px;
       font-weight: 500;
     }
     .subagent-status.thinking { color: var(--green); }
     .subagent-status.done { color: var(--text-dim); }
+    .subagent-status.running { color: var(--green); }
+    .subagent-status.quiet { color: var(--yellow); }
+    .subagent-status.killed { color: var(--red); }
     .subagent-task {
       color: var(--text-dim);
       overflow: hidden;
@@ -255,6 +261,18 @@
     }
     .subagent-steps-toggle:hover { color: var(--text); }
     .subagent-detail .log-feed { max-height: 240px; }
+
+    .task-output {
+      font-size: 11px;
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 300px;
+      overflow-y: auto;
+      margin: 4px 0 6px;
+    }
+    /* Never colour alone: the code is always spelled out beside it. */
+    .task-exit.bad { color: var(--red); }
 
     .card-meta {
       display: grid;
@@ -640,6 +658,88 @@
       );
     }
 
+    function formatBytes(n) {
+      if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'MB';
+      if (n >= 1_000) return Math.round(n / 1_000) + 'KB';
+      return n + 'B';
+    }
+
+    // A background task leaves nothing in the session log, so its output file
+    // is the only place its progress shows up.
+    function TaskRow({ sessionId, task }) {
+      const [open, setOpen] = useState(false);
+      const [detail, setDetail] = useState(null);
+      const outRef = useRef(null);
+
+      // The end of the output is the interesting part, so keep it in view.
+      useEffect(() => {
+        if (outRef.current) outRef.current.scrollTop = outRef.current.scrollHeight;
+      }, [detail]);
+
+      useEffect(() => {
+        if (!open) return;
+        let alive = true;
+        let iv = null;
+        const stop = () => { if (iv) { clearInterval(iv); iv = null; } };
+        // The temp file is eventually cleaned up, so a finished task can be gone
+        // by the time its row is opened. Only a 404 proves that; any other
+        // failure may clear on the next try, so it keeps retrying.
+        const load = () => fetch('/api/sessions/' + sessionId + '/tasks/' + task.taskId)
+          .then(r => r.ok ? r.json() : (r.status === 404 ? { gone: true } : { error: true }))
+          .then(d => {
+            if (!alive) return;
+            setDetail(d);
+            // A task that has ended stops changing, so one good read is enough.
+            if (!d.error && task.status !== 'running' && task.status !== 'quiet') stop();
+          })
+          .catch(() => { if (alive) setDetail({ error: true }); });
+        load();
+        iv = setInterval(load, 2000);
+        return () => { alive = false; stop(); };
+      }, [open, sessionId, task.taskId, task.status]);
+
+      const shown = (detail && !detail.gone && !detail.error) ? detail : task;
+      const label = shown.status === 'running' ? 'run'
+        : shown.status === 'quiet' ? 'quiet'
+        : shown.status === 'killed' ? 'killed' : 'done';
+
+      return e('div', null,
+        e('button', {
+          className: 'subagent',
+          onClick: () => setOpen(!open),
+        },
+          e('span', { className: 'subagent-caret' }, open ? '-' : '+'),
+          e('span', { className: 'subagent-dot ' + shown.status }),
+          e('span', { className: 'subagent-status ' + shown.status }, label),
+          e('span', { className: 'subagent-task' }, task.taskId + (task.lastLine ? '  ' + task.lastLine : '')),
+          e('span', { className: 'subagent-tokens' }, formatBytes(task.bytes))
+        ),
+
+        open ? e('div', { className: 'subagent-detail' },
+          e('div', { className: 'subagent-summary' },
+            [
+              'updated ' + formatTime(shown.updatedAt),
+              shown.truncated ? 'tail of ' + formatBytes(shown.bytes) : formatBytes(shown.bytes),
+            ].filter(Boolean).join(' \u00b7 '),
+            shown.exitCode !== null && shown.exitCode !== undefined
+              ? e('span', { className: 'task-exit' + (shown.exitCode ? ' bad' : '') },
+                  ' \u00b7 exit ' + shown.exitCode)
+              : null
+          ),
+          !detail ? e('div', { className: 'subagent-summary' }, 'Loading...') : null,
+          detail && detail.gone
+            ? e('div', { className: 'subagent-summary' }, 'Output file is gone - it was cleaned up.')
+            : null,
+          detail && detail.error
+            ? e('div', { className: 'subagent-summary' }, 'Could not read the output - retrying.')
+            : null,
+          detail && !detail.gone && !detail.error
+            ? e('div', { className: 'task-output', ref: outRef }, detail.output || '(no output yet)')
+            : null
+        ) : null
+      );
+    }
+
     function SessionCard({ session }) {
       const [expanded, setExpanded] = useState(false);
       const [log, setLog] = useState([]);
@@ -755,6 +855,16 @@
               e('div', { className: 'subagents-header' }, 'Subagents (' + session.subagents.length + ')'),
               session.subagents.map(sub =>
                 e(SubagentRow, { key: sub.agentId, sessionId: session.sessionId, sub })
+              )
+            )
+          : null,
+
+        // Background tasks
+        session.backgroundTasks && session.backgroundTasks.length > 0
+          ? e('div', { className: 'subagents' },
+              e('div', { className: 'subagents-header' }, 'Background tasks (' + session.backgroundTasks.length + ')'),
+              session.backgroundTasks.map(task =>
+                e(TaskRow, { key: task.taskId, sessionId: session.sessionId, task })
               )
             )
           : null,
