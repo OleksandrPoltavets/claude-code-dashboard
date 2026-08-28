@@ -616,9 +616,12 @@
           e('span', { className: 'subagent-caret' }, open ? '-' : '+'),
           e('span', { className: 'subagent-dot ' + sub.status }),
           e('span', { className: 'subagent-status ' + sub.status }, label),
-          sub.agentType ? e('span', { className: 'subagent-type' }, sub.agentType + ' \u00b7') : null,
-          // The name only exists once an agent finishes, so a running one still
-          // shows the opening of its brief.
+          // A name says it all and the type is one line down in the detail, so
+          // the type only labels a row that has no name yet - a running agent,
+          // whose name arrives with its finish notification.
+          !sub.name && sub.agentType
+            ? e('span', { className: 'subagent-type' }, sub.agentType + ' \u00b7')
+            : null,
           e('span', { className: 'subagent-task' }, sub.name || sub.task || sub.agentId),
           e('span', { className: 'subagent-tokens' }, formatNumber(sub.tokensOut) + ' out')
         ),
