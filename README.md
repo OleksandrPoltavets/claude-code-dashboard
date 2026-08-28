@@ -27,8 +27,8 @@ see which session is active.
 - **Project filter, hide-stale and show-all-sessions toggles** — all persist across reloads
 - **Connection health** — red dot and last-update age if the watcher stops responding
 - **Subagents** — every one the session spawned, running or finished, each row labelled
-  with its type and name. Click a row for the full brief it was given and its full report,
-  with the tool-by-tool feed one click away
+  with its name, or with its type while it still runs. Click a row for the full brief it
+  was given and its full report, with the tool-by-tool feed one click away
 - **Background tasks** — anything the session pushed to the background. Their output
   never reaches the session log, so it is read from their output files; click a row for
   the tail of it
@@ -137,8 +137,9 @@ the live output has to come from elsewhere. Claude Code writes it to
 been silent for ten minutes is shown as `quiet`, not `run`.
 
 The same notifications name subagents: an agent's finish note is keyed by its agent id,
-so a finished subagent row carries its name too. A running one has no name yet and shows
-the opening of its brief instead.
+so a finished subagent row carries its name too, and needs no other label. A running one
+cannot be named - nothing in its transcript points back to the call that launched it - so
+it is labelled with its type and the opening of its brief until it ends.
 
 A task's name is not in its output file. A Bash task is named from the `description` of
 the call that launched it, matched to the task id through the tool result; anything else
