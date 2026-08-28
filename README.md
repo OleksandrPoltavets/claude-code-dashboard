@@ -26,8 +26,9 @@ see which session is active.
 - **Desktop alerts** — notification and tab-title count when a session waits for you
 - **Project filter, hide-stale and show-all-sessions toggles** — all persist across reloads
 - **Connection health** — red dot and last-update age if the watcher stops responding
-- **Subagents** — every one the session spawned, running or finished. Click a row for the
-  full brief it was given and its full report, with the tool-by-tool feed one click away
+- **Subagents** — every one the session spawned, running or finished, each row labelled
+  with its type and name. Click a row for the full brief it was given and its full report,
+  with the tool-by-tool feed one click away
 - **Background tasks** — anything the session pushed to the background. Their output
   never reaches the session log, so it is read from their output files; click a row for
   the tail of it
@@ -134,6 +135,10 @@ the live output has to come from elsewhere. Claude Code writes it to
 `/tmp/claude-<uid>/<hash>/<session>/tasks/<taskId>.output`, and appends
 `[exited with code N]` or `[killed]` when one ends. A task with neither marker that has
 been silent for ten minutes is shown as `quiet`, not `run`.
+
+The same notifications name subagents: an agent's finish note is keyed by its agent id,
+so a finished subagent row carries its name too. A running one has no name yet and shows
+the opening of its brief instead.
 
 A task's name is not in its output file. A Bash task is named from the `description` of
 the call that launched it, matched to the task id through the tool result; anything else

@@ -651,8 +651,10 @@ app.get('/api/sessions', (req, res) => {
     const status = deriveStatus(session);
     // Convert subagents object to a list, running first, then newest. A
     // finished agent stays in the list so its transcript is still reachable.
+    // An agent's finish notification is keyed by its agentId, so the names
+    // collected for background tasks name subagents too.
     const subagentList = Object.values(session.subagents)
-      .map(sub => ({ ...sub, status: deriveSubagentStatus(sub) }))
+      .map(sub => ({ ...sub, status: deriveSubagentStatus(sub), name: session.taskNames[sub.agentId] || '' }))
       .sort((a, b) => {
         if ((a.status === 'thinking') !== (b.status === 'thinking')) return a.status === 'thinking' ? -1 : 1;
         return new Date(b.lastEventAt || 0) - new Date(a.lastEventAt || 0);

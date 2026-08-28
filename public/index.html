@@ -203,6 +203,14 @@
     .subagent-status.running { color: var(--green); }
     .subagent-status.quiet { color: var(--yellow); }
     .subagent-status.killed { color: var(--red); }
+    .subagent-type {
+      color: var(--text-dim);
+      flex-shrink: 0;
+      max-width: 40%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .subagent-task {
       color: var(--text-dim);
       overflow: hidden;
@@ -608,7 +616,10 @@
           e('span', { className: 'subagent-caret' }, open ? '-' : '+'),
           e('span', { className: 'subagent-dot ' + sub.status }),
           e('span', { className: 'subagent-status ' + sub.status }, label),
-          e('span', { className: 'subagent-task' }, sub.task || sub.agentId),
+          sub.agentType ? e('span', { className: 'subagent-type' }, sub.agentType + ' \u00b7') : null,
+          // The name only exists once an agent finishes, so a running one still
+          // shows the opening of its brief.
+          e('span', { className: 'subagent-task' }, sub.name || sub.task || sub.agentId),
           e('span', { className: 'subagent-tokens' }, formatNumber(sub.tokensOut) + ' out')
         ),
 
