@@ -711,13 +711,15 @@
           e('span', { className: 'subagent-caret' }, open ? '-' : '+'),
           e('span', { className: 'subagent-dot ' + shown.status }),
           e('span', { className: 'subagent-status ' + shown.status }, label),
-          e('span', { className: 'subagent-task' }, task.taskId + (task.lastLine ? '  ' + task.lastLine : '')),
+          e('span', { className: 'subagent-task' },
+            (task.name || task.taskId) + (task.lastLine ? '  ' + task.lastLine : '')),
           e('span', { className: 'subagent-tokens' }, formatBytes(task.bytes))
         ),
 
         open ? e('div', { className: 'subagent-detail' },
           e('div', { className: 'subagent-summary' },
             [
+              task.taskId,
               'updated ' + formatTime(shown.updatedAt),
               shown.truncated ? 'tail of ' + formatBytes(shown.bytes) : formatBytes(shown.bytes),
             ].filter(Boolean).join(' \u00b7 '),

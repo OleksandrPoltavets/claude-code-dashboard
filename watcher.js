@@ -116,6 +116,10 @@ const TASK_PROBE_BYTES = 400;
 // A task with no exit line that has written nothing for this long is reported
 // as quiet, not running: a killed task never writes its exit line.
 const TASK_QUIET_MS = 10 * 60 * 1000;
+// Task names kept per session, and Bash descriptions waiting for the task id
+// their call turns into.
+const TASK_NAME_CACHE = 200;
+const PENDING_NAME_CACHE = 500;
 const TASK_TAIL_BYTES = 20_000;
 // Claude Code closes a background task's output with one of these: a clean exit
 // carries its code, a terminated one does not.
@@ -161,6 +165,35 @@ function readTail(file, bytes, size) {
   } finally {
     fs.closeSync(fd);
   }
+}
+
+// A background task's id means nothing on its own. Its name comes from the Bash
+// call that launched it, or from the notification written when it ends.
+const pendingTaskNames = new Map(); // tool_use id -> description
+
+function rememberPendingTaskName(toolUseId, description) {
+  if (!toolUseId || !description) return;
+  pendingTaskNames.set(toolUseId, description.substring(0, 120));
+  if (pendingTaskNames.size > PENDING_NAME_CACHE) {
+    pendingTaskNames.delete(pendingTaskNames.keys().next().value);
+  }
+}
+
+function setTaskName(session, taskId, name) {
+  if (!name || session.taskNames[taskId]) return;
+  session.taskNames[taskId] = name;
+  const ids = Object.keys(session.taskNames);
+  if (ids.length > TASK_NAME_CACHE) delete session.taskNames[ids[0]];
+}
+
+// Both notification shapes quote the name: a Bash task reads
+// `Background command "x" completed`, an agent reads `Agent "x" finished`.
+function noteTaskNotification(session, text) {
+  const id = text.match(/<task-id>([A-Za-z0-9_-]+)<\/task-id>/);
+  const summary = text.match(/<summary>([\s\S]*?)<\/summary>/);
+  if (!id || !summary) return;
+  const quoted = summary[1].match(/"([^"]+)"/);
+  setTaskName(session, id[1], (quoted ? quoted[1] : summary[1]).trim().substring(0, 120));
 }
 
 function taskDir(session) {
@@ -254,6 +287,7 @@ function getOrCreateSession(sessionId) {
       permissionMode: '',
       version: '',
       subagents: {}, // agentId -> see the subagent block in processEvent
+      taskNames: {}, // background task id -> human name, see noteTaskNotification
     });
     seenMessageIds.set(sessionId, new Map()); // messageId -> {in, out, cacheCreate, cacheRead}
   }
@@ -283,7 +317,15 @@ function extractActiveFiles(content) {
 
 function processEvent(event, projectHash) {
   if (!event || !event.sessionId) return;
-  if (event.type === 'file-history-snapshot' || event.type === 'queue-operation' || event.type === 'last-prompt') return;
+  // A queue-operation carries nothing else worth keeping, but the notification
+  // in it is the only place an agent-started task's name appears.
+  if (event.type === 'queue-operation') {
+    if (typeof event.content === 'string' && event.content.includes('<task-notification>')) {
+      noteTaskNotification(getOrCreateSession(event.sessionId), event.content);
+    }
+    return;
+  }
+  if (event.type === 'file-history-snapshot' || event.type === 'last-prompt') return;
 
   const session = getOrCreateSession(event.sessionId);
   if (!event.timestamp) return; // skip events without timestamps
@@ -458,6 +500,28 @@ function processEvent(event, projectHash) {
     }
   }
 
+  // --- Background task names ---
+  if (event.type === 'assistant' && Array.isArray(content)) {
+    for (const block of content) {
+      if (block.type === 'tool_use' && block.input && block.input.run_in_background) {
+        rememberPendingTaskName(block.id, block.input.description);
+      }
+    }
+  }
+  if (event.type === 'user' && Array.isArray(content)) {
+    // The tool result is what ties the launching call to the task id.
+    for (const block of content) {
+      if (block.type !== 'tool_result' || typeof block.content !== 'string') continue;
+      const m = block.content.match(/background with ID: ([A-Za-z0-9_-]+)/);
+      if (!m) continue;
+      setTaskName(session, m[1], pendingTaskNames.get(block.tool_use_id));
+      pendingTaskNames.delete(block.tool_use_id);
+    }
+  }
+  if (event.type === 'user' && typeof content === 'string' && content.includes('<task-notification>')) {
+    noteTaskNotification(session, content);
+  }
+
   if (event.type === 'user' && msg.role === 'user') {
     const text = typeof content === 'string'
       ? content.substring(0, 120)
@@ -593,15 +657,16 @@ app.get('/api/sessions', (req, res) => {
         if ((a.status === 'thinking') !== (b.status === 'thinking')) return a.status === 'thinking' ? -1 : 1;
         return new Date(b.lastEventAt || 0) - new Date(a.lastEventAt || 0);
       });
-    const { recentLog, usageByModel, ...rest } = session;
+    const { recentLog, usageByModel, taskNames, ...rest } = session;
     all.push({
       ...rest,
       status,
       costUSD: Math.round(session.costUSD * 10000) / 10000,
       contextLimit: getContextLimit(session),
       subagents: subagentList,
+      // Names come from the log, the rows from disk, so they are joined here.
       backgroundTasks: Date.now() - new Date(session.lastEventAt || 0).getTime() < TASK_LOOKBACK_MS
-        ? listBackgroundTasks(session)
+        ? listBackgroundTasks(session).map(t => ({ ...t, name: taskNames[t.taskId] || '' }))
         : [],
       // Only files touched recently, so the list means "working on now"
       activeFiles: session.activeFiles
@@ -819,6 +884,7 @@ app.get('/api/sessions/:id/tasks/:taskId', (req, res) => {
   const output = readTail(file, TASK_TAIL_BYTES, st.size);
   res.json({
     ...describeTask(`${taskId}.output`, st, output),
+    name: session.taskNames[taskId] || '',
     truncated: st.size > TASK_TAIL_BYTES,
     output,
   });

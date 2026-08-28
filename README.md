@@ -135,6 +135,12 @@ the live output has to come from elsewhere. Claude Code writes it to
 `[exited with code N]` or `[killed]` when one ends. A task with neither marker that has
 been silent for ten minutes is shown as `quiet`, not `run`.
 
+A task's name is not in its output file. A Bash task is named from the `description` of
+the call that launched it, matched to the task id through the tool result; anything else
+is named from the `Background command "x" completed` / `Agent "x" finished` notification
+written when it ends. A row with neither - an agent-started task still running, or a
+launch whose tool result was too large to keep inline - falls back to the task id.
+
 ## Requirements
 
 - **Node.js** v18 or later
