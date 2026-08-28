@@ -85,7 +85,7 @@ This keeps memory flat on a long-running watcher.
 ## Reading the header
 
 ```
-Sessions 0/20 of 115    Output 13.4M out    Cost $2269.13
+Sessions 0/20 of 115    Output 13.4M out    Cost $2,269.13
 ```
 
 | Number | Meaning |
