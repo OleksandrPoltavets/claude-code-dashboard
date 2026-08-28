@@ -161,7 +161,15 @@
       font-size: 11px;
       color: var(--text-dim);
       margin-bottom: 6px;
+      display: block;
+      background: none;
+      border: none;
+      padding: 0;
+      font-family: inherit;
+      text-align: left;
+      cursor: pointer;
     }
+    .subagents-header:hover { color: var(--text); }
     .subagent {
       display: flex;
       align-items: center;
@@ -762,6 +770,13 @@
     function SessionCard({ session }) {
       const [expanded, setExpanded] = useState(false);
       const [log, setLog] = useState([]);
+      // Open by default only while something is still running.
+      const [subsOpen, setSubsOpen] = useState(
+        () => (session.subagents || []).some(s => s.status !== 'done')
+      );
+      const [tasksOpen, setTasksOpen] = useState(
+        () => (session.backgroundTasks || []).some(t => t.status === 'running' || t.status === 'quiet')
+      );
 
       // The list endpoint no longer ships logs; pull them only for open cards.
       useEffect(() => {
@@ -871,20 +886,30 @@
         // Subagents
         session.subagents && session.subagents.length > 0
           ? e('div', { className: 'subagents' },
-              e('div', { className: 'subagents-header' }, 'Subagents (' + session.subagents.length + ')'),
-              session.subagents.map(sub =>
-                e(SubagentRow, { key: sub.agentId, sessionId: session.sessionId, sub })
-              )
+              e('button', {
+                className: 'subagents-header',
+                onClick: () => setSubsOpen(!subsOpen)
+              }, (subsOpen ? '- ' : '+ ') + 'Subagents (' + session.subagents.length + ')'),
+              subsOpen
+                ? session.subagents.map(sub =>
+                    e(SubagentRow, { key: sub.agentId, sessionId: session.sessionId, sub })
+                  )
+                : null
             )
           : null,
 
         // Background tasks
         session.backgroundTasks && session.backgroundTasks.length > 0
           ? e('div', { className: 'subagents' },
-              e('div', { className: 'subagents-header' }, 'Background tasks (' + session.backgroundTasks.length + ')'),
-              session.backgroundTasks.map(task =>
-                e(TaskRow, { key: task.taskId, sessionId: session.sessionId, task })
-              )
+              e('button', {
+                className: 'subagents-header',
+                onClick: () => setTasksOpen(!tasksOpen)
+              }, (tasksOpen ? '- ' : '+ ') + 'Background tasks (' + session.backgroundTasks.length + ')'),
+              tasksOpen
+                ? session.backgroundTasks.map(task =>
+                    e(TaskRow, { key: task.taskId, sessionId: session.sessionId, task })
+                  )
+                : null
             )
           : null,
 

@@ -28,10 +28,11 @@ see which session is active.
 - **Connection health** — red dot and last-update age if the watcher stops responding
 - **Subagents** — every one the session spawned, running or finished, each row labelled
   with its name, or with its type while it still runs. Click a row for the full brief it
-  was given and its full report, with the tool-by-tool feed one click away
+  was given and its full report, with the tool-by-tool feed one click away. The whole
+  list folds; it opens itself while an agent is still running
 - **Background tasks** — anything the session pushed to the background. Their output
   never reaches the session log, so it is read from their output files; click a row for
-  the tail of it
+  the tail of it. The list folds too, and opens itself while a task is still running
 - **Recently touched files**, per session
 - **Expandable log feed**, fetched on demand
 - **Click to open** a project folder, **git branch**, **permission mode badges**
