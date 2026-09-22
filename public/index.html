@@ -536,17 +536,19 @@
     /* Git branch */
     /* Path and branch under the project name. Keys are dim and fixed-width so
        the two values line up and the labels do not compete with them. */
-    .card-sub { margin-top: 3px; }
+    .card-sub { margin-top: -6px; margin-bottom: 10px; }
     .sub-row {
       display: flex;
       gap: 8px;
       font-size: 11px;
       line-height: 1.5;
     }
-    .sub-key { color: var(--text-dim); flex-shrink: 0; min-width: 42px; }
+    .sub-key { color: var(--text-dim); flex-shrink: 0; min-width: 52px; }
     .sub-val {
       color: var(--text-dim);
       word-break: break-all;
+      flex: 1;
+      min-width: 0;
     }
     .card:hover .sub-val { color: var(--text); }
 
@@ -945,20 +947,6 @@
               e('span', { className: 'status-dot ' + st }),
               session.label || session.sessionId.substring(0, 8)
             ),
-            // The label is only the folder name, so the path goes here rather
-            // than living solely in a tooltip - a tooltip is no use on a phone
-            // and nobody hovers to find out where a project is. The branch was
-            // a bare name with nothing saying what it was.
-            e('div', { className: 'card-sub' },
-              session.cwd ? e('div', { className: 'sub-row' },
-                e('span', { className: 'sub-key' }, 'Path'),
-                e('span', { className: 'sub-val', title: session.cwd }, shortPath(session.cwd, homeDir))
-              ) : null,
-              session.gitBranch ? e('div', { className: 'sub-row' },
-                e('span', { className: 'sub-key' }, 'Branch'),
-                e('span', { className: 'sub-val' }, session.gitBranch)
-              ) : null
-            )
           ),
           e('div', { style: { display: 'flex', gap: '6px', alignItems: 'center' } },
             session.mode && session.mode !== 'normal'
@@ -968,6 +956,22 @@
             e('span', { className: 'card-status ' + st }, st)
           )
         ),
+
+        // Path and branch sit outside the header flex, so a long path uses the
+        // whole card instead of the narrow column left beside the badges. The
+        // label is only the folder name, so without this the path lived solely
+        // in a tooltip - no use on a phone, and nobody hovers to find out where
+        // a project is.
+        (session.cwd || session.gitBranch) ? e('div', { className: 'card-sub' },
+          session.cwd ? e('div', { className: 'sub-row' },
+            e('span', { className: 'sub-key' }, 'Path:'),
+            e('span', { className: 'sub-val', title: session.cwd }, shortPath(session.cwd, homeDir))
+          ) : null,
+          session.gitBranch ? e('div', { className: 'sub-row' },
+            e('span', { className: 'sub-key' }, 'Branch:'),
+            e('span', { className: 'sub-val' }, session.gitBranch)
+          ) : null
+        ) : null,
 
         // Meta grid. Two columns filled row by row, so the order here is
         // Model / Cost, Effort / Output, Turns / Cache Read, Started / Last
