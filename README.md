@@ -35,7 +35,8 @@ see which session is active.
 - **Alerts when a session waits for you** — an in-page banner, the tab-title count, and
   a desktop notification, so at least one lands whatever the window looks like. One
   switch governs all three. See [Alerts](#alerts)
-- **Project filter, hide-stale and show-all-sessions toggles** — all persist across reloads
+- **Project filter** — matches the name, the full path, the branch or the model
+- **Hide-stale and show-all-sessions toggles** — both persist across reloads
 - **Connection health** — red dot and last-update age if the watcher stops responding
 - **Subagents** — every one the session spawned, running or finished, each row labelled
   with its name, or with its type while it still runs. Click a row for the full brief it
