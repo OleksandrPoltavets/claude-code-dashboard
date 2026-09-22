@@ -140,6 +140,17 @@ const TASK_EXIT_RE = /\[exited with code (-?\d+)\]\s*$/;
 const TASK_KILLED_RE = /\[killed\]\s*$/;
 const TASK_END_RE = /\[(?:exited with code -?\d+|killed)\]\s*$/;
 
+// --- Status windows ---
+// A working session is not silent for a fixed short interval. Measured over
+// 4173 consecutive-event gaps in real logs: median 1s, p90 10s, p95 19s,
+// p99 240s - a long tool call writes nothing at all while it runs. 6.2% of
+// gaps exceed 15s, so a 15s window reports a busy session as idle.
+const THINKING_MS = 2 * 60 * 1000;
+// "Waiting for you" is not a burst of activity, it is a state that persists
+// until you answer. It expires only so that yesterday's finished sessions do
+// not all sit there yellow.
+const WAITING_MS = 30 * 60 * 1000;
+
 // Log lines held per session. Entries are capped at 120 chars, so 200 lines is
 // ~30KB a session - only fetched when a card is expanded.
 const LOG_KEEP = Number(process.env.LOG_KEEP) || 200;
@@ -317,8 +328,12 @@ function resultText(content) {
     .map(b => b.text).join('\n');
 }
 
+// Tool output is written for a terminal, so it carries colour escapes that
+// would otherwise show up in the feed as literal "[90m" noise.
+const ANSI_RE = /\u001b\[[0-9;]*m|\[[0-9;]{1,6}m/g;
+
 function firstLine(text) {
-  const line = String(text).split('\n').find(l => l.trim());
+  const line = String(text).replace(ANSI_RE, '').split('\n').find(l => l.trim());
   return line ? line.trim().substring(0, TOOL_SUMMARY_CHARS) : '';
 }
 
@@ -342,7 +357,10 @@ function summariseResult(name, isError, text, extra) {
     case 'Bash': {
       if (r.persistedOutputSize) return `${formatBytes(r.persistedOutputSize)} saved to file`;
       const out = firstLine(r.stdout || '') || firstLine(r.stderr || '');
-      if (r.gitOperation) return `${r.gitOperation}${out ? ' - ' + out : ''}`;
+      // gitOperation is an object, shaped like { push: { branch: 'main' } }.
+      const git = r.gitOperation && typeof r.gitOperation === 'object'
+        ? Object.keys(r.gitOperation)[0] : '';
+      if (git) return `${git}${out ? ' - ' + out : ''}`;
       return out || 'no output';
     }
     case 'WebFetch':
@@ -672,23 +690,22 @@ function deriveStatus(session) {
   if (!session.lastEventAt) return 'idle';
   const elapsed = Date.now() - new Date(session.lastEventAt).getTime();
 
-  if (elapsed > 60_000) return 'idle';
-
   // Check for error in recent log
   const lastLogs = session.recentLog.slice(-3);
   if (lastLogs.some(l => l.type === 'error')) return 'error';
 
-  if (elapsed < 15_000) {
-    if (session.lastEventType === 'assistant') {
-      if (session.lastContentTypes.includes('tool_use')) return 'thinking';
-      if (session.lastContentTypes.includes('text')) return 'waiting';
-      if (session.lastContentTypes.includes('thinking')) return 'thinking';
-    }
-    if (session.lastEventType === 'progress') return 'thinking';
-    if (session.lastEventType === 'user') return 'thinking'; // just sent input, waiting for response
-  }
+  // A turn that ended in text with no tool call is a question or a report: the
+  // session is waiting for you, and stays waiting until you come back to it.
+  // This is the state the desktop alert exists for, so it must not expire in
+  // seconds the way a working session's silence does.
+  const turnEnded = session.lastEventType === 'assistant'
+    && session.lastContentTypes.includes('text')
+    && !session.lastContentTypes.includes('tool_use');
+  if (turnEnded) return elapsed < WAITING_MS ? 'waiting' : 'idle';
 
-  return 'idle';
+  // Anything else recent means work in progress - a tool call, a thinking
+  // block, or input you just sent.
+  return elapsed < THINKING_MS ? 'thinking' : 'idle';
 }
 
 // --- JSONL File Processing ---

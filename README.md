@@ -25,7 +25,8 @@ see which session is active.
 - **Usage header** — today / 7-day / 30-day spend, token counts, top model, 30-day sparkline
 - **Cost tracking** — per-model rates, with cache writes billed by TTL and cache reads at 0.1x
 - **Context window bar** — per session, sized to that session's actual limit
-- **Status detection** — thinking (green), waiting (yellow), idle (orange), stale (dimmed)
+- **Status detection** — thinking (green), waiting (yellow), idle (orange), stale (dimmed).
+  See [How status is decided](#how-status-is-decided)
 - **Session start time** — clock time plus elapsed, per card
 - **Desktop alerts** — notification and tab-title count when a session waits for you
 - **Project filter, hide-stale and show-all-sessions toggles** — all persist across reloads
@@ -302,6 +303,27 @@ The `newest only` / `all sessions` button in the header switches between the two
 The two cost figures cover different windows on purpose: the top row is **all time**,
 the usage row's `30 days` is the **last 30 days**.
 
+## How status is decided
+
+| Status | When |
+| --- | --- |
+| `waiting` | The last turn ended in text with no tool call — it asked you something, or it finished and is waiting. Holds for 30 minutes |
+| `thinking` | Anything else within the last 2 minutes — a tool call, a thinking block, input you just sent |
+| `idle` | Neither of the above |
+| `idle-stale` | Idle, and nothing today |
+
+The two windows are different lengths on purpose, and neither is short.
+
+**A working session is not continuously noisy.** Measured across 4,173 consecutive-event
+gaps in real logs: median 1s, p90 10s, p95 19s, **p99 240s**. A long tool call writes
+nothing at all while it runs. 6.2% of gaps are over 15 seconds, so a short window reports
+a busy session as idle.
+
+**"Waiting for you" is a state, not a burst.** A session that asked you a question ten
+minutes ago is still waiting. It expires after 30 minutes only so that yesterday's
+finished sessions do not all sit there yellow. This is the status the desktop alert fires
+on, so a short window would mean the alert almost never arrives.
+
 ## How It Works
 
 Claude Code writes JSONL session logs to `~/.claude/projects/`. The dashboard:
@@ -421,6 +443,9 @@ not know about subscription plans or quotas.
 - Subagent and background-task lists fold away, and open themselves while one is running
 - Header and card grid reflow for a phone screen
 - Costs read with two decimals and a thousands separator
+- Status had a dead zone: `thinking` and `waiting` were only reachable under 15s, and
+  `idle` was returned for everything from 15s to 60s. A session working through a
+  60-second command read as idle, and `waiting` expired before you could see it
 - Log rows carry the tool's argument. Upstream only ever appended `file_path`, so every
   Bash, Grep and WebFetch row showed a bare tool name
 - Each tool call is followed by how it ended, and a row opens to the full call and its
