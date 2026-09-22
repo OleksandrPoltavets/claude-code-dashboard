@@ -374,6 +374,36 @@
     }
     .stale-toggle:hover { color: var(--text); border-color: var(--text-dim); }
     .stale-toggle.on { color: var(--blue); border-color: var(--blue); }
+    /* In-page alert bar. Yellow matches the waiting status colour, and the
+       count is spelled out so colour is not carrying the message alone. */
+    .waiting-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 4px 12px;
+      margin-bottom: 12px;
+      padding: 8px 14px;
+      border: 1px solid var(--yellow);
+      border-left-width: 3px;
+      border-radius: 6px;
+      background: rgba(255, 204, 0, 0.08);
+      font-size: 13px;
+    }
+    .waiting-count { color: var(--yellow); font-weight: 600; }
+    .waiting-names { color: var(--text-dim); }
+    .waiting-sep { color: var(--text-dim); }
+    .waiting-jump {
+      background: none;
+      border: none;
+      padding: 0;
+      font: inherit;
+      color: var(--text);
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .waiting-jump:hover { color: var(--yellow); }
+
     /* On, but something outside the page is stopping it working. The word says
        so too; the colour is not carrying the meaning on its own. */
     .stale-toggle.warn { color: var(--red); border-color: var(--red); }
@@ -854,7 +884,7 @@
       const st = session.status;
       const pct = contextPercent(session.lastTurnInputTotal || session.tokensIn, session.contextLimit);
 
-      return e('div', { className: 'card status-' + st },
+      return e('div', { className: 'card status-' + st, id: 'card-' + session.sessionId },
         // Header
         e('div', { className: 'card-header' },
           e('div', null,
@@ -1274,6 +1304,27 @@
             })()
           )
         ),
+
+        // In-page alert. The desktop notification needs permission and the
+        // tab-title count needs a tab bar; neither survives a window with no
+        // browser chrome, which is where this dashboard tends to live.
+        waiting.length > 0 ? e('div', { className: 'waiting-bar' },
+          e('span', { className: 'waiting-count' },
+            waiting.length + (waiting.length === 1 ? ' session is' : ' sessions are') + ' waiting for you'),
+          e('span', { className: 'waiting-names' },
+            waiting.map((s, i) => e(React.Fragment, { key: s.sessionId },
+              i > 0 ? e('span', { className: 'waiting-sep' }, ' · ') : null,
+              e('button', {
+                className: 'waiting-jump',
+                onClick: () => {
+                  const el = document.getElementById('card-' + s.sessionId);
+                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                },
+                title: 'Scroll to this session',
+              }, s.label || s.sessionId.substring(0, 8))
+            ))
+          )
+        ) : null,
 
         e(UsageBar, { usage }),
 
