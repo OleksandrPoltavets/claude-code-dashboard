@@ -73,6 +73,18 @@ Code changes.
 - **A running subagent cannot be named.** Nothing in its transcript points back to the
   call that launched it, so it is labelled by type until its finish notification arrives.
 - **`tool_result.content` is a string on most tools and an array of blocks on some.**
+- **Reasoning effort is `effort` on every assistant event** (`low`/`medium`/`high`).
+  `perTurnEffort` sits beside it as a single-turn override and is `null` unless set, so
+  it takes precedence only when present.
+- **Settings events carry no timestamp.** `{type: 'mode', mode, sessionId}` and
+  `{type: 'permission-mode', permissionMode, sessionId}` have three keys and nothing
+  else. They must be handled before the `!event.timestamp` guard, and must not touch
+  `lastEventAt` — they are settings, not activity.
+- **`permissionMode` values seen in practice are `auto` and `plan`**, not only the
+  `acceptEdits` / `bypassPermissions` the UI originally knew about.
+- **`attachment.identity.modelId` spells the context tier** (`claude-opus-5[1m]`). Rare
+  — 10 occurrences in a 10-session sample — so the tier inference still stands, but this
+  would be the direct signal if it turns out to be reliable.
 - **Tool output carries terminal colour escapes**, which reach the feed as literal
   `[90m` noise unless stripped.
 

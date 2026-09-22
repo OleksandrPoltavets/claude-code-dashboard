@@ -28,6 +28,9 @@ see which session is active.
 - **Status detection** — thinking (green), waiting (yellow), idle (orange), stale (dimmed).
   See [How status is decided](#how-status-is-decided)
 - **Session start time** — clock time plus elapsed, per card
+- **Reasoning effort** — `low` / `medium` / `high`, beside the model
+- **Permission mode badge** — `AUTO`, `AUTO-EDIT`, `PLAN`, `YOLO` — and the output mode
+  when it is not `normal`
 - **Desktop alerts** — notification and tab-title count when a session waits for you
 - **Project filter, hide-stale and show-all-sessions toggles** — all persist across reloads
 - **Connection health** — red dot and last-update age if the watcher stops responding
@@ -43,7 +46,7 @@ see which session is active.
   command, the pattern, the URL — and each tool call is followed by how it ended:
   `ok` with the first line of output, or `err` with the exit code and the error.
   **Click a row** for the full command and its output tail
-- **Click to open** a project folder, **git branch**, **permission mode badges**
+- **Click to open** a project folder, **git branch**
 - **Phone-friendly** — the header and the card grid reflow down to a phone screen
 - **Cross-platform** — Windows, macOS, and Linux
 
@@ -443,6 +446,10 @@ not know about subscription plans or quotas.
 - Subagent and background-task lists fold away, and open themselves while one is running
 - Header and card grid reflow for a phone screen
 - Costs read with two decimals and a thousands separator
+- Reasoning effort and output mode are shown; neither was read from the log before
+- Permission mode badges covered only `bypassPermissions` and `acceptEdits`, so a session
+  in `auto` or `plan` — the common cases — showed no badge at all. The dedicated
+  `permission-mode` event was dropped too, because it carries no timestamp
 - Status had a dead zone: `thinking` and `waiting` were only reachable under 15s, and
   `idle` was returned for everything from 15s to 60s. A session working through a
   60-second command read as idle, and `waiting` expired before you could see it

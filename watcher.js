@@ -309,6 +309,8 @@ function getOrCreateSession(sessionId) {
       lastTurnInputTotal: 0, // input + cache for context window estimate
       maxInputSeen: 0, // highest lastTurnInputTotal seen, for context-tier inference
       permissionMode: '',
+      effort: '', // reasoning effort, from the assistant event: low | medium | high
+      mode: '', // output mode, from its own `mode` event
       version: '',
       subagents: {}, // agentId -> see the subagent block in processEvent
       taskNames: {}, // background task id -> human name, see noteTaskNotification
@@ -475,6 +477,17 @@ function processEvent(event, projectHash) {
   }
   if (event.type === 'file-history-snapshot' || event.type === 'last-prompt') return;
 
+  // Settings events carry no timestamp and are not activity, so they are
+  // handled before the timestamp guard below and must not touch lastEventAt.
+  // `permission-mode` is the authoritative record of a mid-session change;
+  // without this the value only ever arrived as a field on a user turn.
+  if (event.type === 'mode' || event.type === 'permission-mode') {
+    const s = getOrCreateSession(event.sessionId);
+    if (event.mode) s.mode = event.mode;
+    if (event.permissionMode) s.permissionMode = event.permissionMode;
+    return;
+  }
+
   const session = getOrCreateSession(event.sessionId);
   if (!event.timestamp) return; // skip events without timestamps
   const ts = event.timestamp;
@@ -494,6 +507,12 @@ function processEvent(event, projectHash) {
   }
   if (event.version) session.version = event.version;
   if (event.permissionMode) session.permissionMode = event.permissionMode;
+  // Reasoning effort rides on every assistant event. perTurnEffort is an
+  // override for one turn and is null unless it was actually set, so the
+  // session-level value is the fallback rather than the other way round.
+  if (event.effort || event.perTurnEffort) {
+    session.effort = event.perTurnEffort || event.effort;
+  }
 
   const msg = event.message || {};
   const content = msg.content;

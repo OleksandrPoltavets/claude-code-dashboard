@@ -150,6 +150,16 @@
     }
     .perm-badge.bypass { color: var(--red); background: rgba(255,68,68,0.15); }
     .perm-badge.accept-edits { color: var(--yellow); background: rgba(255,204,0,0.12); }
+    .perm-badge.auto { color: var(--blue); background: rgba(90,160,255,0.12); }
+    .perm-badge.plan { color: var(--text-dim); background: rgba(255,255,255,0.07); }
+    .perm-badge.mode { color: var(--text-dim); background: rgba(255,255,255,0.07); }
+    /* Reasoning effort sits with the model, since that is what it belongs to.
+       Shown as a word, never colour alone. */
+    .effort {
+      color: var(--text-dim);
+      font-weight: 400;
+    }
+    .effort.high { color: var(--yellow); }
 
     /* Subagents */
     .subagents {
@@ -569,6 +579,21 @@
       return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
     }
 
+    // Permission mode badge. `auto` and `plan` are real values the watcher sees
+    // and were previously unlabelled, so those cards showed no badge at all.
+    const PERM_BADGES = {
+      bypassPermissions: ['bypass', 'YOLO'],
+      acceptEdits: ['accept-edits', 'AUTO-EDIT'],
+      auto: ['auto', 'AUTO'],
+      plan: ['plan', 'PLAN'],
+    };
+
+    function permissionBadge(mode) {
+      const hit = PERM_BADGES[mode];
+      if (!hit) return null;
+      return e('span', { className: 'perm-badge ' + hit[0], title: 'Permission mode: ' + mode }, hit[1]);
+    }
+
     function formatDuration(ms) {
       if (!ms || ms < 0) return '';
       const secs = Math.round(ms / 1000);
@@ -850,11 +875,10 @@
             session.gitBranch ? e('div', { className: 'git-branch' }, session.gitBranch) : null
           ),
           e('div', { style: { display: 'flex', gap: '6px', alignItems: 'center' } },
-            session.permissionMode === 'bypassPermissions'
-              ? e('span', { className: 'perm-badge bypass' }, 'YOLO')
-              : session.permissionMode === 'acceptEdits'
-              ? e('span', { className: 'perm-badge accept-edits' }, 'AUTO-EDIT')
+            session.mode && session.mode !== 'normal'
+              ? e('span', { className: 'perm-badge mode', title: 'Output mode' }, session.mode.toUpperCase())
               : null,
+            permissionBadge(session.permissionMode),
             e('span', { className: 'card-status ' + st }, st)
           )
         ),
@@ -863,7 +887,14 @@
         e('div', { className: 'card-meta' },
           e('div', { className: 'meta-item' },
             e('span', { className: 'meta-key' }, 'Model'),
-            e('span', { className: 'meta-val' }, session.model || '-')
+            e('span', { className: 'meta-val' },
+              session.model || '-',
+              // Effort is a property of the model, so it reads beside it.
+              session.effort
+                ? e('span', { className: 'effort ' + session.effort, title: 'Reasoning effort' },
+                    ' · ' + session.effort)
+                : null
+            )
           ),
           e('div', { className: 'meta-item' },
             e('span', { className: 'meta-key' }, 'Cost'),
