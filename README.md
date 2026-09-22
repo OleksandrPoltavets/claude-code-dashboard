@@ -5,9 +5,10 @@ context usage, status, and activity across all your terminals on one page.
 
 ![Claude Code Dashboard screenshot](Screenshot.png)
 
-> Fork of [Stargx/claude-code-dashboard](https://github.com/Stargx/claude-code-dashboard)
-> with corrected pricing and token accounting, a smaller poll payload, and a usage header.
-> See [Changes in this fork](#changes-in-this-fork).
+> Began as a fork of [Stargx/claude-code-dashboard](https://github.com/Stargx/claude-code-dashboard).
+> The watcher and the interface have since been largely rewritten: corrected pricing and
+> token accounting, a hardened file reader, subagent and background-task views, a usage
+> header, and a smaller poll payload. See [Changes in this fork](#changes-in-this-fork).
 
 ## Why?
 
@@ -375,4 +376,5 @@ not know about subscription plans or quotas.
 
 ## License
 
-MIT. Original work by Cold Beam Games.
+MIT. This fork is copyright Oleksandr Poltavets; the original work it builds on is
+copyright Cold Beam Games. Both notices are in [LICENSE](LICENSE).

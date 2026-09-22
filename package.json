@@ -13,11 +13,18 @@
     "developer-tools",
     "session-monitor"
   ],
-  "author": "Cold Beam Games",
+  "author": "Oleksandr Poltavets",
   "license": "MIT",
   "type": "commonjs",
   "dependencies": {
     "chokidar": "^5.0.0",
     "express": "^5.2.1"
+  },
+  "contributors": [
+    "Cold Beam Games (original work)"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OleksandrPoltavets/claude-code-dashboard.git"
   }
 }
