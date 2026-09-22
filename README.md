@@ -8,10 +8,12 @@ context usage, status, and activity across all your terminals on one page.
 <sub>Captured in demo mode. Every project, figure and log line above is made up — see
 [Demo mode](#demo-mode).</sub>
 
-> Began as a fork of [Stargx/claude-code-dashboard](https://github.com/Stargx/claude-code-dashboard).
-> The watcher and the interface have since been largely rewritten: corrected pricing and
-> token accounting, a hardened file reader, subagent and background-task views, a usage
-> header, and a smaller poll payload. See [Changes in this fork](#changes-in-this-fork).
+> Began as a fork of [Stargx/claude-code-dashboard](https://github.com/Stargx/claude-code-dashboard),
+> standalone since September 2026. The watcher and the interface have both been largely
+> rewritten: corrected pricing and token accounting, a hardened file reader, subagent and
+> background-task views, tool results in the log feed, reworked status detection, and a
+> poll payload that stays small as the rest grows.
+> See [Changes from upstream](#changes-from-upstream).
 
 ## Why?
 
@@ -31,14 +33,9 @@ see which session is active.
 - **Reasoning effort** — `low` / `medium` / `high`, beside the model
 - **Permission mode badge** — `AUTO`, `AUTO-EDIT`, `PLAN`, `YOLO` — and the output mode
   when it is not `normal`
-- **Alerts when a session waits for you**, three ways, so at least one always lands:
-  a yellow in-page banner naming each waiting session and how long it has been waiting
-  (click a name to jump to its card and clear it from the bar), the tab-title count,
-  and a desktop notification. A cleared session reappears if it goes busy and comes
-  back to waiting, so acknowledging one never loses the next one. The banner needs no
-  permission and no browser chrome, which is what a kiosk or chromeless window has.
-  Notifications fire once per session and re-arm when it goes busy again; the button
-  reads `alerts blocked` if the browser is refusing them, rather than claiming to be on
+- **Alerts when a session waits for you** — an in-page banner, the tab-title count, and
+  a desktop notification, so at least one lands whatever the window looks like.
+  See [Alerts](#alerts)
 - **Project filter, hide-stale and show-all-sessions toggles** — all persist across reloads
 - **Connection health** — red dot and last-update age if the watcher stops responding
 - **Subagents** — every one the session spawned, running or finished, each row labelled
@@ -350,6 +347,31 @@ minutes ago is still waiting. It expires after 30 minutes only so that yesterday
 finished sessions do not all sit there yellow. This is the status the desktop alert fires
 on, so a short window would mean the alert almost never arrives.
 
+## Alerts
+
+Three channels, because each one fails somewhere.
+
+| Channel | Works when | Fails when |
+| --- | --- | --- |
+| In-page banner | always | — |
+| Tab-title count `(2)` | there is a tab bar | kiosk or chromeless window |
+| Desktop notification | permission granted | the browser refuses, or there is no Notification API |
+
+The **banner** is the reliable one: a yellow bar under the header naming every session
+waiting on you and how long each has been waiting. It needs no permission, no tab bar
+and no Notification API, which is what a chromeless or kiosk window leaves you with.
+Click a name to jump to that card and clear it from the bar — the session is still
+waiting, this only stops the bar repeating something you have already seen. A cleared
+session reappears if it goes busy and comes back to waiting, so acknowledging one can
+never swallow the next one. Reloading the page clears the acknowledgements, since a
+reload is a fresh look at what still needs you.
+
+A **notification** fires once per session and re-arms when that session goes busy again.
+The button reads `alerts blocked` when the browser is refusing notifications and
+`alerts n/a` where there is no Notification API, rather than claiming to be on and
+doing nothing. It re-checks when you come back to the tab, so unblocking it in browser
+settings takes effect without a reload.
+
 ## How It Works
 
 Claude Code writes JSONL session logs to `~/.claude/projects/`. The dashboard:
@@ -439,7 +461,10 @@ whole session.
 Figures are estimates from your local logs at API rates. They are not a bill, and they do
 not know about subscription plans or quotas.
 
-## Changes in this fork
+## Changes from upstream
+
+What differs from [Stargx/claude-code-dashboard](https://github.com/Stargx/claude-code-dashboard),
+which this began as.
 
 **Accuracy**
 
@@ -456,41 +481,40 @@ not know about subscription plans or quotas.
 - A truncated or rotated file resets instead of freezing that session
 - Lines parse as chunks arrive rather than buffering whole files
 
-**Interface**
+**Added**
 
 - Usage header with spend windows, token counts, top model, and a 30-day sparkline
-- Session start time, project filter, hide-stale toggle, desktop alerts
+- Session start time, project filter, hide-stale toggle, connection health indicator
 - Show-all-sessions toggle for the older sessions a project accumulates
-- Log feed holds 200 lines instead of 30, in a taller scroll box
-- Connection health indicator
-- Raised text contrast; stale cards keep their fade but clear on hover
-- Subagent rows survive the agent finishing, labelled `run` / `done` by word and by colour,
-  and open to the agent's full report; step feed collapsed unless the agent is still running
-- Subagent and background-task lists fold away, and open themselves while one is running
-- Header and card grid reflow for a phone screen
-- Costs read with two decimals and a thousands separator
-- Reasoning effort and output mode are shown; neither was read from the log before
-- `waiting` was unreachable in practice. Status read the last event in the file, and a
-  finished turn is followed by hook `system` events within milliseconds, so the state a
-  session sits in whenever it needs you was the one state it could never show
-- Permission mode badges covered only `bypassPermissions` and `acceptEdits`, so a session
-  in `auto` or `plan` — the common cases — showed no badge at all. The dedicated
-  `permission-mode` event was dropped too, because it carries no timestamp
-- Status had a dead zone: `thinking` and `waiting` were only reachable under 15s, and
-  `idle` was returned for everything from 15s to 60s. A session working through a
-  60-second command read as idle, and `waiting` expired before you could see it
-- Log rows carry the tool's argument. Upstream only ever appended `file_path`, so every
-  Bash, Grep and WebFetch row showed a bare tool name
-- Each tool call is followed by how it ended, and a row opens to the full call and its
-  output tail
+- Subagent panel: every agent a session spawned, its full brief and full report, and its
+  tool-by-tool feed. Background-task panel, read from the output files the log never carries
+- Tool results in the log feed, with a row opening to the full call and its output tail
+- Reasoning effort and output mode, neither of which was read from the log before
+- In-page waiting banner, so an alert lands without notification permission or a tab bar
+- Demo mode (`DEMO=1`), for the screenshot and for trying the interface before installing
+- Boot instructions for launchd, systemd and Task Scheduler, and a paste-ready install
+  prompt for a coding agent
+- Phone layout; foldable subagent and background-task lists
 
-**Subagents**
+**Fixed**
 
-- Finished subagents stayed in memory but were filtered out of the API, so a session usually
-  showed none
-- The report was capped at 400 characters; it is now served whole from the transcript
-- A subagent transcript lives one directory deeper than a session log, so its events set the
-  session's project label to `subagents`
+- **`waiting` was unreachable.** Status read the last event in the file, and a finished
+  turn is followed by hook `system` events within milliseconds — so the one state a
+  session sits in whenever it needs you was the one state that could never show
+- **Status had a dead zone.** `thinking` and `waiting` were only reachable under 15s and
+  `idle` was returned for everything from 15s to 60s, so a session working through a
+  one-minute command read as idle. Measured over 4,173 event gaps: p95 is 19s, p99 240s
+- **Permission badges covered only `bypassPermissions` and `acceptEdits`**, so a session
+  in `auto` or `plan` — the common cases — showed none. The dedicated `permission-mode`
+  event was dropped too, because it carries no timestamp
+- **Log rows showed a bare tool name.** Only `file_path` was ever appended, so every Bash,
+  Grep and WebFetch row lost its argument
+- **Finished subagents were filtered out of the API**, so a session usually showed none;
+  the report was also capped at 400 characters
+- A subagent transcript lives one directory deeper than a session log, so its events set
+  the session's project label to `subagents`
+- The log feed holds 200 lines instead of 30; raised text contrast; stale cards keep their
+  fade but clear on hover; costs read with two decimals and a thousands separator
 
 ## Tech Stack
 
