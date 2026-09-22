@@ -1,175 +1,137 @@
-# Claude Code Dashboard — Project Brief
+# Claude Code Dashboard — working notes
 
-## What This Is
-A lightweight localhost web dashboard that aggregates and visualises live Claude Code
-session data across multiple concurrent terminal sessions. No cloud, no auth, no backend
-beyond a small Node.js watcher process. Think: master control panel for power users
-running 2–4 Claude Code instances simultaneously.
+Guide for an agent working on this repo. The README is written for users; this file is
+what the code does not say about itself.
 
-## The Problem It Solves
-Claude Code has no cross-session visibility. If you're running two sessions in separate
-terminal windows you must alt-tab to check status, there's no combined token/cost view,
-and you can't see which session is actively doing something vs waiting for input.
+The project is built and running. This file was originally a pre-build brief; it
+described a design that no longer matches the code, so it now records current state.
 
-## Target User
-Solo developers running multiple Claude Code sessions. Initially: the developer of this
-tool (dogfooding). Potential open-source release if useful to others.
+## What it is
 
----
+A localhost dashboard over the Claude Code JSONL session logs in `~/.claude/projects/`.
+It **reads those logs and never writes to them**. No cloud, no auth, no database.
 
-## Architecture
-
-### Data Source
-Claude Code writes JSONL session logs to:
-  `~/.claude/projects/<project-hash>/<session-uuid>.jsonl`
-
-Each line is a JSON event. Relevant event types to parse:
-- `assistant` — contains `usage` (input_tokens, output_tokens), message content
-- `user` — tool_result events, human turns
-- `tool_use` — tool name, input (file paths, bash commands etc.)
-- `summary` — session summary / task description if present
-
-**First task: explore and document the actual JSONL schema before building anything.**
-Run `ls ~/.claude/projects/` and examine a real session file to confirm field names.
-Do not assume schema — verify it.
-
-### Process Model
-Two components:
-
-1. **Watcher process** (`watcher.js`)
-   - Uses `chokidar` to watch `~/.claude/projects/**/*.jsonl`
-   - Parses new lines as they're appended (tail behaviour)
-   - Maintains in-memory session state map
-   - Serves state via a simple Express HTTP endpoint: `GET /api/sessions`
-   - Also serves the static frontend
-
-2. **Frontend** (`index.html` / vanilla JS or a single React bundle)
-   - Polls `/api/sessions` every 2 seconds (simple, no WebSocket complexity yet)
-   - Renders the dashboard UI
-   - No build step if possible — prefer a single-file approach initially
-
-### Session State Shape (per session)
-```json
-{
-  "sessionId": "uuid",
-  "projectHash": "abc123",
-  "projectPath": "/resolved/path/if/available",
-  "label": "derived from project path basename",
-  "status": "thinking | waiting | idle",
-  "currentTask": "last assistant message summary or tool in progress",
-  "tokensIn": 48320,
-  "tokensOut": 12840,
-  "costUSD": 0.42,
-  "turnCount": 18,
-  "activeFiles": ["FacialController.cpp"],
-  "recentLog": [ { "time": "...", "type": "tool|think|ok", "msg": "..." } ],
-  "startedAt": "ISO timestamp of first event",
-  "lastEventAt": "ISO timestamp of most recent event"
-}
-```
-
----
-
-## Pricing Constants (verify against current Anthropic pricing)
-```js
-const PRICING = {
-  "claude-sonnet-4-20250514": { input: 3.00, output: 15.00 }, // per 1M tokens
-  "claude-opus-4-20250514":   { input: 15.00, output: 75.00 },
-  "claude-haiku-4-5":         { input: 0.80, output: 4.00 },
-};
-```
-Model name is in the JSONL — extract it and apply correct pricing.
-
----
-
-## Tech Stack
-- **Runtime**: Node.js (whatever version is already installed)
-- **Watcher deps**: `chokidar`, `express`
-- **Frontend**: Single HTML file with embedded JS. Use React via CDN if needed.
-  No webpack, no Vite, no build step — keep it zero-friction to run.
-- **Styling**: Dark terminal aesthetic. IBM Plex Mono. See UI reference below.
-
----
-
-## UI Requirements
-Reference the existing mockup design (dark/terminal aesthetic):
-- Status colour coding: green = thinking/active, yellow = waiting, grey = idle
-- Per-session context window % bar
-- Combined stats header: total tokens in/out, total cost, active session count
-- Expandable session cards with recent log feed
-- Auto-refresh every 2s — no manual reload needed
-
-The frontend mockup exists as `claude-code-dashboard.jsx` — use it as a visual
-reference and adapt to vanilla JS/HTML or a CDN React bundle.
-
----
-
-## Project Path Label Resolution
-Claude Code project hashes are SHA-256 of the working directory path. To show human-
-readable labels, reverse-lookup by reading `.claude/projects/<hash>/` for any stored
-metadata, OR read the `cwd` field from the first JSONL event in the session.
-Fallback: show last two path segments of the hash directory name.
-
----
-
-## Status Detection Logic
-Derive session status from recency of last event:
-- Event within last 10s AND last event was a `tool_use` → `thinking`
-- Event within last 10s AND last event was an `assistant` message with no tool → `waiting`
-- Last event > 60s ago → `idle`
-- Any `error` type event in last 3 events → `error`
-
----
-
-## Development Phases
-
-### Phase 1 — Schema Discovery (do this first, before any code)
-- Examine real JSONL session files
-- Document actual field names and event types
-- Confirm token usage field locations
-- Note any surprises
-
-### Phase 2 — Watcher + API
-- `npm init`, install `chokidar express`
-- Build `watcher.js`: file watching, JSONL parsing, session state, `/api/sessions` endpoint
-- Test with `curl localhost:3001/api/sessions`
-
-### Phase 3 — Frontend
-- Build `index.html` served by Express
-- Adapt dashboard mockup design
-- Poll `/api/sessions`, render cards
-
-### Phase 4 — Polish
-- Project path label resolution
-- Status detection refinement
-- Cost daily estimate projection
-- "Open terminal at session" button (launches `wt` or `gnome-terminal` at CWD)
-
----
-
-## Non-Goals (for now)
-- WebSocket live push (polling is fine for v1)
-- Session control / sending messages to Claude Code
-- Windows tray icon or system notifications
-- Multi-machine / remote sessions
-- Authentication (localhost only)
-
----
-
-## Running It
-Target invocation:
 ```bash
-node watcher.js
-# Dashboard available at http://localhost:3001
+npm start              # http://localhost:3456
+DEMO=1 npm start       # fixed made-up data, no real log opened, watcher never starts
 ```
 
-Ideally add a note to personal dotfiles / shell profile so it auto-starts.
+## Layout
 
----
+| File | Lines | What |
+| --- | --- | --- |
+| `watcher.js` | ~1160 | Everything server side: parse, state, pricing, API |
+| `public/index.html` | ~1200 | Whole frontend. React via CDN, **no build step** |
+| `demo.js` | ~420 | Demo fixture and its routes |
 
-## Notes
-- This is a personal dev tool first. Don't over-engineer it.
-- If the JSONL schema differs significantly from assumptions, update this doc before
-  proceeding — don't paper over it with workarounds.
-- The Architect (Claude Code) should feel free to flag if any phase assumption is wrong
-  rather than silently building against a bad assumption.
+Two production dependencies, `express` and `chokidar`. Keep it that way.
+
+## Conventions that matter
+
+- **No build step.** The page is one HTML file with React from a CDN. Do not add a
+  bundler, JSX compilation, or a `src/` tree.
+- **Keep the 2-second poll small.** Logs, subagent transcripts, background-task output
+  and tool detail are all fetched per card on expand, never in the poll. Logs alone were
+  ~75% of the payload before that split. Anything new that is large follows the same
+  rule, and anything held per session must be excluded from the `...rest` spread in
+  `GET /api/sessions`.
+- **Bound everything held in memory.** A watcher runs for weeks. Per-session caches all
+  have a cap: `LOG_KEEP`, `TOOL_DETAIL_KEEP`, `SUBAGENT_CACHE`, `TASK_NAME_CACHE`.
+  The one deliberate exception is the per-message-id usage map, which must not be
+  bounded by count — dropping an entry lets an old message be billed twice. It is
+  released when the session is archived.
+- **Colour is never the only signal.** Status shows a word as well as a colour; a
+  subagent row reads `run` / `done`; a foldable list shows `+` / `−`.
+
+## JSONL schema — what was actually found
+
+Verified against real logs, not assumed. Re-verify before relying on any of it; Claude
+Code changes.
+
+- **Token usage is per message id, and messages are rewritten while streaming.**
+  Counting raw events roughly doubles both turns and tokens. Deltas are taken against
+  the stored cumulative value per message id, which also makes re-reading the same bytes
+  harmless.
+- **The context limit is not recorded.** It is inferred: start at `CONTEXT_WINDOW`, step
+  up a tier once a turn is seen above 200K, since a 200K session compacts before it can.
+- **There is no exit code for a tool call.** A failed Bash arrives as a `tool_result`
+  with `is_error: true` whose content opens `Exit code N`. That text is the only source.
+- **`toolUseResult` sits on the event beside the result, and its shape differs per
+  tool.** Bash has `stdout`/`stderr`/`interrupted`/`timedOutAfterMs`; WebFetch has an
+  HTTP `code`/`codeText`/`bytes`; Edit and Write have `structuredPatch`; Read has
+  `file`. There is no common field, so outcome summaries are written per tool.
+  `gitOperation` is an **object** shaped like `{push: {branch: 'main'}}`, not a string.
+- **A large tool output never reaches the log.** Claude Code writes it to a file and
+  leaves `persistedOutputPath` / `persistedOutputSize`, read on demand.
+- **A background task's output is not in the JSONL either.** It goes to
+  `/tmp/claude-<uid>/<hash>/<session>/tasks/<taskId>.output`, closed with
+  `[exited with code N]` or `[killed]`. The session log records only the start and a
+  `queue-operation` notification when it ends.
+- **A subagent transcript lives one directory deeper** than the session log, at
+  `<hash>/<session>/subagents/agent-<id>.jsonl`. Its events would otherwise set the
+  session's project label to `subagents`.
+- **A running subagent cannot be named.** Nothing in its transcript points back to the
+  call that launched it, so it is labelled by type until its finish notification arrives.
+- **`tool_result.content` is a string on most tools and an array of blocks on some.**
+- **Tool output carries terminal colour escapes**, which reach the feed as literal
+  `[90m` noise unless stripped.
+
+## Status
+
+`deriveStatus` in `watcher.js`. The rules and, more importantly, why the windows are
+these lengths:
+
+| Status | When |
+| --- | --- |
+| `waiting` | Last turn ended in text with **no** tool call. Holds `WAITING_MS` (30 min) |
+| `thinking` | Anything else within `THINKING_MS` (2 min) |
+| `idle` | Neither |
+| `idle-stale` | Idle, and nothing today. Applied in the API handler, not here |
+
+**Do not shorten these without measuring first.** An earlier version used 15s and 60s
+and had a dead zone: everything between them returned `idle`, so a session running a
+one-minute command read as idle. Measured over 4,173 consecutive-event gaps in real
+logs: median 1s, p90 10s, p95 19s, **p99 240s** — a long tool call writes nothing at all
+while it runs, and 6.2% of gaps exceed 15s.
+
+`waiting` is deliberately the long one. It is a state that persists until you answer,
+not a burst of activity, and it is what the desktop alert fires on.
+
+There is a `recentLog` check for `type === 'error'` above these rules that matches no
+type the parser emits — pre-existing, left alone. Do not widen it to the `err` rows: a
+failed grep or a failing test is normal work, not a session-level error.
+
+## Pricing
+
+`PRICING` in `watcher.js`, USD per 1M tokens, plus cache multipliers on the base input
+rate (5-min write 1.25x, 1-hour write 2x, read 0.1x). Tokens are bucketed per model, so
+a subagent on a cheaper model does not reprice the whole session. Update when Anthropic's
+pricing changes; the README documents the table for users.
+
+Figures are estimates from local logs at API rates. Not a bill, and they know nothing
+about subscription plans or quotas.
+
+## Demo mode
+
+`DEMO=1` mounts `demo.js` routes ahead of the real ones and skips chokidar entirely. It
+exists because the README screenshot cannot come from a live board: that leaks real
+project names and spend, and it only shows whatever statuses happen to exist at the
+time — in practice all `IDLE`.
+
+**The fixture's field names must match what the frontend reads, and they are not the
+obvious ones:** `cacheReadIn`, `bytes` on a task row, `lastTurnInputTotal` for the
+context bar. Wrong names render silently wrong rather than erroring.
+
+When a feature is added, add it to the fixture too, or the screenshot stops showing what
+the README claims.
+
+## Not goals
+
+WebSocket push, sending messages to Claude Code, remote or multi-machine sessions,
+authentication.
+
+## Origin
+
+Began as a fork of `Stargx/claude-code-dashboard`; a standalone repo since 2026-09-22.
+`LICENSE` carries both copyrights. **The Cold Beam Games line cannot be removed** — MIT
+permits everything else but requires the original notice to travel with the code.
