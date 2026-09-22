@@ -88,14 +88,19 @@ Do this:
 
 1. Check node --version is 18 or later. Stop and tell me if it is not.
 2. Clone the repo into ~/projects/claude-code-dashboard, or into wherever I usually
-   keep repositories on this machine. If that directory already exists, pull instead
-   of cloning, and tell me you did.
+   keep repositories on this machine. If that directory already exists, do NOT clone
+   over it: run `git remote -v` there first, and only `git pull` if it is already a
+   clone of this repo. If it is some other repo, stop and ask me where to put this one.
 3. Run npm install in it. It has two production dependencies, express and chokidar.
-4. Start it in the background with `npm start` and wait a few seconds.
+4. Start it detached, so you do not block on it:
+   `mkdir -p logs && nohup npm start > logs/dashboard.log 2>&1 &`
+   Then wait about three seconds. Do not run `npm start` in the foreground.
 5. Verify it: `curl -s -o /dev/null -w "%{http_code}" localhost:3456/api/sessions`
-   must print 200. If the port is already taken, restart it with PORT=<free port>
-   and use that port everywhere after this.
-6. Tell me the URL to open.
+   must print 200. If it does not, show me logs/dashboard.log. If the port is already
+   taken, restart it with PORT=<free port> and use that port everywhere after this.
+6. Check whether ~/.claude/projects exists. If it does not, tell me the dashboard
+   will stay empty until I have run at least one Claude Code session.
+7. Tell me the URL to open.
 
 Rules:
 - Do not run anything with sudo. This is a user-level tool.
@@ -104,19 +109,21 @@ Rules:
 
 Then ask me whether I want it to start automatically at login. Do not set that up
 until I say yes. If I say yes, follow the "Run It On Boot" section of the repo's
-README: a launchd agent on macOS, or a systemd user unit on Linux. Use my real home
-directory and my real node path, not the example ones. If I run the 1M context tier,
-set CONTEXT_WINDOW=1000000; otherwise leave it out. Afterwards, show me the command
-that proves it is running, and the command to undo it.
+README: a launchd agent on macOS, a systemd user unit on Linux, or a Task Scheduler
+logon task on Windows. Use my real home directory, and use the output of `which node`
+(`where node` on Windows) as the node path - do not copy the example paths. If I run
+the 1M context tier, set CONTEXT_WINDOW=1000000; otherwise leave it out. Afterwards,
+show me the command that proves it is running, and the command to undo it.
 ````
 
 The agent should end with a URL for you to open, normally **http://localhost:3456**.
 
 ## Run It On Boot
 
-The dashboard is more useful when it is always there. Below is the setup running on the
-author's Mac: a `launchd` agent that starts the watcher at login, restarts it if it dies,
-and writes its output to `logs/`.
+The dashboard is more useful when it is always there. The macOS block below is the setup
+running on the author's Mac: a `launchd` agent that starts the watcher at login, restarts
+it if it dies, and writes its output to `logs/`. The Linux and Windows blocks are the same
+idea for those systems.
 
 ### macOS (`launchd`)
 
@@ -215,6 +222,36 @@ systemctl --user status claude-code-dashboard
 journalctl --user -u claude-code-dashboard -f
 loginctl enable-linger "$USER"   # keeps it running while you are logged out
 ```
+
+### Windows (Task Scheduler)
+
+A logon task, created from an ordinary Command Prompt. Replace the paths with your own;
+`where node` prints yours.
+
+```bat
+schtasks /create /tn "Claude Code Dashboard" /sc onlogon ^
+  /tr "\"C:\Program Files\nodejs\node.exe\" \"%USERPROFILE%\projects\claude-code-dashboard\watcher.js\"" ^
+  /rl limited /f
+```
+
+Set the environment variables machine-wide, since a task carries no shell of its own:
+
+```bat
+setx CONTEXT_WINDOW 1000000
+setx PORT 3456
+```
+
+Check it, run it now without waiting for a logon, and remove it again:
+
+```bat
+schtasks /query /tn "Claude Code Dashboard"
+schtasks /run   /tn "Claude Code Dashboard"
+schtasks /delete /tn "Claude Code Dashboard" /f
+```
+
+The task runs with no console window. Unlike `launchd` and `systemd`, Task Scheduler
+will not restart the watcher if it exits; tick **Restart on failure** in `taskschd.msc`
+if you want that.
 
 ## Configuration
 
