@@ -405,10 +405,12 @@
     .waiting-jump:hover { color: var(--yellow); }
     .waiting-since { color: var(--text-dim); font-size: 12px; }
 
-    /* On, but something outside the page is stopping it working. The word says
-       so too; the colour is not carrying the meaning on its own. */
-    .stale-toggle.warn { color: var(--red); border-color: var(--red); }
-    .stale-toggle.warn:hover { color: var(--red); border-color: var(--red); }
+    /* On, but the browser is not honouring it. Amber, not the red the log feed
+       uses for failures: nothing is broken and the banner still works. The dot
+       is the signal, so the state reads without the colour. */
+    .stale-toggle.warn { color: var(--yellow); border-color: var(--yellow); }
+    .stale-toggle.warn:hover { color: var(--yellow); border-color: var(--yellow); }
+    .alert-warn-dot { font-size: 8px; vertical-align: middle; }
     /* Clicking would fetch every held-back session and show none of them. */
     .stale-toggle:disabled { opacity: 0.4; cursor: not-allowed; }
     .stale-toggle:disabled:hover { color: var(--text-dim); border-color: var(--border); }
@@ -1223,7 +1225,9 @@
       }, [waiting.map(s => s.sessionId).join(',')]);
 
       useEffect(() => {
-        document.title = waitingShown.length
+        // One switch governs all three channels. A button labelled "alerts"
+        // that silenced only one of them was the confusing part.
+        document.title = alerts && waitingShown.length
           ? '(' + waitingShown.length + ') Claude Code Dashboard'
           : 'Claude Code Dashboard';
         const live = new Set(waiting.map(s => s.sessionId));
@@ -1305,27 +1309,32 @@
                 : 'newest only' + (hidden ? ' (+' + hidden + ')' : ''));
             })(),
             (() => {
-              // Only claim "on" when a notification could actually arrive. The
-              // button stays clickable when blocked so it can still be turned
-              // off; it just stops saying it is working.
+              // The label says what the setting is; the dot says the browser is
+              // not honouring it. Its presence is the signal, so it does not
+              // depend on the colour being seen. The in-page banner works
+              // either way, which is why this is a mark and not an alarm.
               const blocked = alerts && notifPerm === 'denied';
               const missing = alerts && notifPerm === 'unsupported';
-              const label = !alerts ? 'alerts off'
-                : blocked ? 'alerts blocked'
-                : missing ? 'alerts n/a'
-                : 'alerts on';
+              const impaired = blocked || missing;
               return e('button', {
-                className: 'stale-toggle'
-                  + (alerts && !blocked && !missing ? ' on' : '')
-                  + (blocked || missing ? ' warn' : ''),
+                className: 'stale-toggle' + (alerts && !impaired ? ' on' : '') + (impaired ? ' warn' : ''),
                 onClick: toggleAlerts,
                 title: blocked
-                  ? 'This browser is blocking notifications for this site. Allow them in the '
-                    + 'address-bar site settings, then reload.'
+                  ? 'Notifications are blocked by the browser, so only the in-page banner and '
+                    + 'the tab-title count will show. In Safari: ⌘, → Websites → Notifications '
+                    + '→ Allow. In Chrome: the site settings icon in the address bar.'
                   : missing
-                  ? 'This browser has no Notification API, so only the tab-title count works.'
-                  : 'Desktop notification when a session is waiting for you',
-              }, label);
+                  ? 'This browser has no Notification API, so only the in-page banner and the '
+                    + 'tab-title count will show.'
+                  : alerts
+                  ? 'On: in-page banner, tab-title count and a desktop notification when a '
+                    + 'session is waiting for you. Click to silence all three.'
+                  : 'Off: nothing announces a waiting session except its own card. Click to '
+                    + 'turn on the banner, the tab-title count and desktop notifications.',
+              },
+                impaired ? e('span', { className: 'alert-warn-dot' }, '● ') : null,
+                alerts ? 'alerts on' : 'alerts off'
+              );
             })()
           )
         ),
@@ -1333,7 +1342,7 @@
         // In-page alert. The desktop notification needs permission and the
         // tab-title count needs a tab bar; neither survives a window with no
         // browser chrome, which is where this dashboard tends to live.
-        waitingShown.length > 0 ? e('div', { className: 'waiting-bar' },
+        alerts && waitingShown.length > 0 ? e('div', { className: 'waiting-bar' },
           e('span', { className: 'waiting-count' },
             waitingShown.length + (waitingShown.length === 1 ? ' session is' : ' sessions are')
             + ' waiting for you'),

@@ -33,8 +33,8 @@ see which session is active.
 - **Permission mode badge** — `AUTO`, `AUTO-EDIT`, `PLAN`, `YOLO` — and the output mode
   when it is not `normal`
 - **Alerts when a session waits for you** — an in-page banner, the tab-title count, and
-  a desktop notification, so at least one lands whatever the window looks like.
-  See [Alerts](#alerts)
+  a desktop notification, so at least one lands whatever the window looks like. One
+  switch governs all three. See [Alerts](#alerts)
 - **Project filter, hide-stale and show-all-sessions toggles** — all persist across reloads
 - **Connection health** — red dot and last-update age if the watcher stops responding
 - **Subagents** — every one the session spawned, running or finished, each row labelled
@@ -348,13 +348,17 @@ on, so a short window would mean the alert almost never arrives.
 
 ## Alerts
 
-Three channels, because each one fails somewhere.
+Three channels, because each one fails somewhere. One switch — the `alerts` button —
+governs all three.
 
 | Channel | Works when | Fails when |
 | --- | --- | --- |
 | In-page banner | always | — |
 | Tab-title count `(2)` | there is a tab bar | kiosk or chromeless window |
 | Desktop notification | permission granted | the browser refuses, or there is no Notification API |
+
+With `alerts off`, nothing announces a waiting session except its own card. That is the
+point of the switch, but it is worth knowing before you turn it off.
 
 The **banner** is the reliable one: a yellow bar under the header naming every session
 waiting on you and how long each has been waiting. It needs no permission, no tab bar
@@ -366,10 +370,10 @@ never swallow the next one. Reloading the page clears the acknowledgements, sinc
 reload is a fresh look at what still needs you.
 
 A **notification** fires once per session and re-arms when that session goes busy again.
-The button reads `alerts blocked` when the browser is refusing notifications and
-`alerts n/a` where there is no Notification API, rather than claiming to be on and
-doing nothing. It re-checks when you come back to the tab, so unblocking it in browser
-settings takes effect without a reload.
+When the browser is refusing notifications, the button keeps saying `alerts on` — the
+setting is on — but carries an amber dot, and its tooltip says which channels are still
+working and how to allow the rest. It re-checks when you come back to the tab, so
+unblocking it in browser settings takes effect without a reload.
 
 ## How It Works
 
