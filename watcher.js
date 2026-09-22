@@ -498,8 +498,12 @@ function processEvent(event, projectHash) {
 
   if (event.cwd && !session.cwd) {
     session.cwd = event.cwd;
+    // The folder name alone. Everything above it repeats across the board -
+    // `projects/` on most cards, the home directory on the rest - so it is
+    // noise on every row. The API handler puts the parent back on any label
+    // that turns out to be ambiguous.
     const parts = event.cwd.split('/').filter(Boolean);
-    session.label = parts.slice(-2).join('/');
+    session.label = parts[parts.length - 1] || '';
   }
   if (event.gitBranch && !session.gitBranch) {
     session.gitBranch = event.gitBranch;
@@ -872,18 +876,21 @@ app.get('/api/sessions', (req, res) => {
   }
 
   // Active sessions (thinking/waiting/error) always shown individually.
-  // Idle sessions: only show the most recent per project label.
+  // Idle sessions: only show the most recent per project.
+  // Grouping is by working directory, not by the display label: the label is
+  // the folder name alone, and two projects can share one.
+  const groupKey = s => s.cwd || s.label || s.sessionId;
   const active = all.filter(s => s.status !== 'idle');
   const idle = all.filter(s => s.status === 'idle');
-  // Collect labels that already have an active session
-  const activeLabels = new Set(active.map(s => s.label));
+  const activeGroups = new Set(active.map(groupKey));
   const latestIdleByLabel = new Map();
   for (const s of idle) {
     // Skip idle sessions if that project already has an active session
-    if (activeLabels.has(s.label)) continue;
-    const existing = latestIdleByLabel.get(s.label);
+    if (activeGroups.has(groupKey(s))) continue;
+    const key = groupKey(s);
+    const existing = latestIdleByLabel.get(key);
     if (!existing || new Date(s.lastEventAt || 0) > new Date(existing.lastEventAt || 0)) {
-      latestIdleByLabel.set(s.label, s);
+      latestIdleByLabel.set(key, s);
     }
   }
 
@@ -906,6 +913,19 @@ app.get('/api/sessions', (req, res) => {
     if (aToday !== bToday) return bToday - aToday; // active today first
     return (a.label || '').localeCompare(b.label || '');
   });
+
+  // Two projects can share a folder name. Only the ones that actually clash
+  // get their parent folder back, so the common case stays one word.
+  const pathsPerLabel = new Map();
+  for (const s of result) {
+    if (!pathsPerLabel.has(s.label)) pathsPerLabel.set(s.label, new Set());
+    pathsPerLabel.get(s.label).add(s.cwd || s.sessionId);
+  }
+  for (const s of result) {
+    if (pathsPerLabel.get(s.label).size < 2) continue;
+    const parts = (s.cwd || '').split('/').filter(Boolean);
+    if (parts.length > 1) s.label = parts.slice(-2).join('/');
+  }
 
   // What the newest-per-project collapse is holding back, and how much of it
   // the hide-stale filter would drop on arrival. Without these the "all

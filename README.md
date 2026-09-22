@@ -50,6 +50,9 @@ see which session is active.
   A success is a dim `→` carrying the first line of output; a failure is a red `err`
   with the exit code, so failures are the only thing in that column that reads as a
   word. **Click a row** for the full command and its output tail
+- **Project name** is the folder name alone — the path above it repeats on every card.
+  A name shared by two projects gets its parent folder back, and the filter box searches
+  the whole path, so filtering by a parent folder still works
 - **Click to open** a project folder, **git branch**
 - **Phone-friendly** — the header and the card grid reflow down to a phone screen
 - **Cross-platform** — Windows, macOS, and Linux

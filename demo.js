@@ -19,7 +19,7 @@ const ago = (ms) => new Date(t0 - ms).toISOString();
 const SESSIONS = [
   {
     sessionId: 'demo-0000-0000-0000-000000000001',
-    label: 'acme/checkout-api',
+    label: 'checkout-api',
     projectPath: '/home/dev/acme/checkout-api',
     gitBranch: 'feat/idempotent-refunds',
     permissionMode: 'acceptEdits',
@@ -78,7 +78,7 @@ const SESSIONS = [
   },
   {
     sessionId: 'demo-0000-0000-0000-000000000002',
-    label: 'acme/web-storefront',
+    label: 'web-storefront',
     projectPath: '/home/dev/acme/web-storefront',
     gitBranch: 'main',
     permissionMode: 'auto',
@@ -112,7 +112,7 @@ const SESSIONS = [
   },
   {
     sessionId: 'demo-0000-0000-0000-000000000003',
-    label: 'acme/infra-terraform',
+    label: 'infra-terraform',
     projectPath: '/home/dev/acme/infra-terraform',
     gitBranch: 'chore/pin-provider-versions',
     permissionMode: 'plan',
@@ -149,7 +149,7 @@ const SESSIONS = [
   },
   {
     sessionId: 'demo-0000-0000-0000-000000000004',
-    label: 'acme/data-pipeline',
+    label: 'data-pipeline',
     projectPath: '/home/dev/acme/data-pipeline',
     gitBranch: 'main',
     permissionMode: 'default',
@@ -183,7 +183,7 @@ const SESSIONS = [
   },
   {
     sessionId: 'demo-0000-0000-0000-000000000005',
-    label: 'opensource/rate-limiter',
+    label: 'rate-limiter',
     projectPath: '/home/dev/opensource/rate-limiter',
     gitBranch: 'fix/clock-skew',
     permissionMode: 'default',
@@ -207,7 +207,7 @@ const SESSIONS = [
   },
   {
     sessionId: 'demo-0000-0000-0000-000000000006',
-    label: 'acme/mobile-app',
+    label: 'mobile-app',
     projectPath: '/home/dev/acme/mobile-app',
     gitBranch: 'main',
     permissionMode: 'default',

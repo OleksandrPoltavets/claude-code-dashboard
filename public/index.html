@@ -1205,6 +1205,9 @@
         .filter(s => !hideStale || s.status !== 'idle-stale')
         .filter(s => !q || (
           (s.label || '').toLowerCase().includes(q) ||
+          // The label is only the folder name now, so search the whole path
+          // too - otherwise filtering by a parent folder stops working.
+          (s.cwd || '').toLowerCase().includes(q) ||
           (s.gitBranch || '').toLowerCase().includes(q) ||
           (s.model || '').toLowerCase().includes(q)
         ));
