@@ -374,6 +374,10 @@
     }
     .stale-toggle:hover { color: var(--text); border-color: var(--text-dim); }
     .stale-toggle.on { color: var(--blue); border-color: var(--blue); }
+    /* On, but something outside the page is stopping it working. The word says
+       so too; the colour is not carrying the meaning on its own. */
+    .stale-toggle.warn { color: var(--red); border-color: var(--red); }
+    .stale-toggle.warn:hover { color: var(--red); border-color: var(--red); }
     /* Clicking would fetch every held-back session and show none of them. */
     .stale-toggle:disabled { opacity: 0.4; cursor: not-allowed; }
     .stale-toggle:disabled:hover { color: var(--text-dim); border-color: var(--border); }
@@ -1079,12 +1083,33 @@
       });
       const notified = useRef(new Set());
 
+      // The browser's own permission, tracked so the button can say when it is
+      // the thing stopping a notification. Without it, blocking notifications
+      // once leaves the button reading "alerts on" forever while nothing fires.
+      const [notifPerm, setNotifPerm] = useState(
+        () => ('Notification' in window ? Notification.permission : 'unsupported'));
+
+      // It can be changed from the browser's own UI, which fires no event, so
+      // re-read it whenever the page is looked at again.
+      useEffect(() => {
+        if (!('Notification' in window)) return;
+        const sync = () => setNotifPerm(
+          'Notification' in window ? Notification.permission : 'unsupported');
+        window.addEventListener('focus', sync);
+        document.addEventListener('visibilitychange', sync);
+        return () => {
+          window.removeEventListener('focus', sync);
+          document.removeEventListener('visibilitychange', sync);
+        };
+      }, []);
+
       const toggleAlerts = useCallback(() => {
         setAlerts(v => {
           const next = !v;
           try { localStorage.setItem('alerts', next ? '1' : '0'); } catch {}
           if (next && 'Notification' in window && Notification.permission === 'default') {
-            Notification.requestPermission();
+            // The browser only shows the prompt once; record whichever way it goes.
+            Notification.requestPermission().then(setNotifPerm).catch(() => {});
           }
           return next;
         });
@@ -1224,11 +1249,29 @@
                 ? 'all sessions'
                 : 'newest only' + (hidden ? ' (+' + hidden + ')' : ''));
             })(),
-            e('button', {
-              className: 'stale-toggle' + (alerts ? ' on' : ''),
-              onClick: toggleAlerts,
-              title: 'Desktop notification when a session is waiting for you'
-            }, alerts ? 'alerts on' : 'alerts off')
+            (() => {
+              // Only claim "on" when a notification could actually arrive. The
+              // button stays clickable when blocked so it can still be turned
+              // off; it just stops saying it is working.
+              const blocked = alerts && notifPerm === 'denied';
+              const missing = alerts && notifPerm === 'unsupported';
+              const label = !alerts ? 'alerts off'
+                : blocked ? 'alerts blocked'
+                : missing ? 'alerts n/a'
+                : 'alerts on';
+              return e('button', {
+                className: 'stale-toggle'
+                  + (alerts && !blocked && !missing ? ' on' : '')
+                  + (blocked || missing ? ' warn' : ''),
+                onClick: toggleAlerts,
+                title: blocked
+                  ? 'This browser is blocking notifications for this site. Allow them in the '
+                    + 'address-bar site settings, then reload.'
+                  : missing
+                  ? 'This browser has no Notification API, so only the tab-title count works.'
+                  : 'Desktop notification when a session is waiting for you',
+              }, label);
+            })()
           )
         ),
 

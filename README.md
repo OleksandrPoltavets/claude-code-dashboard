@@ -31,7 +31,10 @@ see which session is active.
 - **Reasoning effort** — `low` / `medium` / `high`, beside the model
 - **Permission mode badge** — `AUTO`, `AUTO-EDIT`, `PLAN`, `YOLO` — and the output mode
   when it is not `normal`
-- **Desktop alerts** — notification and tab-title count when a session waits for you
+- **Desktop alerts** — notification and tab-title count when a session waits for you.
+  Fires once per session, re-arming when that session goes busy again. The tab-title
+  count works regardless; the button reads `alerts blocked` if the browser is refusing
+  notifications, rather than claiming to be on
 - **Project filter, hide-stale and show-all-sessions toggles** — all persist across reloads
 - **Connection health** — red dot and last-update age if the watcher stops responding
 - **Subagents** — every one the session spawned, running or finished, each row labelled
