@@ -457,6 +457,47 @@ launch whose tool result was too large to keep inline - falls back to the task i
 - **Node.js** v18 or later
 - **Claude Code**, any version that writes JSONL session logs
 
+## Resource use
+
+Measured on a MacBook Pro (14 cores, 24 GB) watching **163 sessions / 438 JSONL files /
+505 MB** under `~/.claude/projects`. Scale from the session count, not the machine.
+
+| | Measured |
+| --- | --- |
+| CPU, steady | 0–2% of one core, mostly 0 |
+| Memory, steady | 85–170 MB |
+| Memory, startup | ~560 MB for a few seconds |
+| Open file descriptors | ~1,100 (≈ 1 per watched file, plus the process's own) |
+| Browser poll | 37 KB every 2s over loopback — ~63 MB/hour, never leaves the machine |
+
+**It is read-only.** There are no write calls anywhere in the code, and the running
+process holds no writable descriptor under `~/.claude`. It cannot affect a Claude Code
+session.
+
+**It reads incrementally.** A change is read with
+`createReadStream(file, { start: offset })`, so appending a line reads that line — not
+the file. The largest session file in the sample was 26 MB and is never re-read.
+
+**It is idle between changes.** No polling of the filesystem; `chokidar` is event-driven,
+which is why steady CPU is ~0.
+
+### On a small machine
+
+Two things scale, and neither is the CPU:
+
+- **File descriptors, one per watched file.** A host with the common `ulimit -n` of 1024
+  will hit `EMFILE` somewhere under a thousand session files. Check with `ulimit -n`
+  before running it on a small VPS or a Raspberry Pi, and raise it or lower
+  `RETENTION_DAYS`. On Linux the same applies to inotify watches — `sysctl
+  fs.inotify.max_user_watches` is often 8192, shared with every other watcher on the box.
+- **The startup spike**, which is the whole history being parsed once. It tracked roughly
+  the size of `~/.claude/projects` in the sample. On a 512 MB host with a large history
+  this is the number that bites, and `RETENTION_DAYS` is the lever — sessions older than
+  it are folded into a running total and dropped from memory.
+
+Steady-state memory is bounded by design: log lines, tool details, subagents and task
+names all have per-session caps (`LOG_KEEP` and the constants beside it in `watcher.js`).
+
 ## Pricing
 
 Rates live in `PRICING` in `watcher.js`, in USD per 1M tokens. Update them when Anthropic's
