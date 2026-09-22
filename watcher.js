@@ -964,6 +964,9 @@ app.get('/api/sessions', (req, res) => {
       hiddenStaleCount,
     },
     usage: buildUsage(),
+    // So a card can render `~/projects/x` instead of repeating the whole home
+    // path on every row. Sent once per response rather than per session.
+    homeDir: os.homedir(),
     serverTime: new Date().toISOString(),
   });
 });

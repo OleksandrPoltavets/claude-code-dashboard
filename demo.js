@@ -20,7 +20,7 @@ const SESSIONS = [
   {
     sessionId: 'demo-0000-0000-0000-000000000001',
     label: 'checkout-api',
-    projectPath: '/home/dev/acme/checkout-api',
+    cwd: '/home/dev/acme/checkout-api',
     gitBranch: 'feat/idempotent-refunds',
     permissionMode: 'acceptEdits',
     effort: 'high',
@@ -79,7 +79,7 @@ const SESSIONS = [
   {
     sessionId: 'demo-0000-0000-0000-000000000002',
     label: 'web-storefront',
-    projectPath: '/home/dev/acme/web-storefront',
+    cwd: '/home/dev/acme/web-storefront',
     gitBranch: 'main',
     permissionMode: 'auto',
     effort: 'medium',
@@ -113,7 +113,7 @@ const SESSIONS = [
   {
     sessionId: 'demo-0000-0000-0000-000000000003',
     label: 'infra-terraform',
-    projectPath: '/home/dev/acme/infra-terraform',
+    cwd: '/home/dev/acme/infra-terraform',
     gitBranch: 'chore/pin-provider-versions',
     permissionMode: 'plan',
     effort: 'high',
@@ -150,7 +150,7 @@ const SESSIONS = [
   {
     sessionId: 'demo-0000-0000-0000-000000000004',
     label: 'data-pipeline',
-    projectPath: '/home/dev/acme/data-pipeline',
+    cwd: '/home/dev/acme/data-pipeline',
     gitBranch: 'main',
     permissionMode: 'default',
     effort: 'medium',
@@ -184,7 +184,7 @@ const SESSIONS = [
   {
     sessionId: 'demo-0000-0000-0000-000000000005',
     label: 'rate-limiter',
-    projectPath: '/home/dev/opensource/rate-limiter',
+    cwd: '/home/dev/opensource/rate-limiter',
     gitBranch: 'fix/clock-skew',
     permissionMode: 'default',
     effort: 'low',
@@ -208,7 +208,7 @@ const SESSIONS = [
   {
     sessionId: 'demo-0000-0000-0000-000000000006',
     label: 'mobile-app',
-    projectPath: '/home/dev/acme/mobile-app',
+    cwd: '/home/dev/acme/mobile-app',
     gitBranch: 'main',
     permissionMode: 'default',
     effort: 'medium',
@@ -369,6 +369,8 @@ function mountDemo(app) {
         topModel: 'claude-opus-5',
         series,
       },
+      // The fixture's paths are invented, so the "home" is invented too.
+      homeDir: '/home/dev',
       serverTime: new Date().toISOString(),
     });
   });

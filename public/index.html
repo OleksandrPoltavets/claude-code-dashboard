@@ -534,6 +534,22 @@
     .empty p { font-size: 13px; }
 
     /* Git branch */
+    /* Path and branch under the project name. Keys are dim and fixed-width so
+       the two values line up and the labels do not compete with them. */
+    .card-sub { margin-top: 3px; }
+    .sub-row {
+      display: flex;
+      gap: 8px;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+    .sub-key { color: var(--text-dim); flex-shrink: 0; min-width: 42px; }
+    .sub-val {
+      color: var(--text-dim);
+      word-break: break-all;
+    }
+    .card:hover .sub-val { color: var(--text); }
+
     .git-branch {
       font-size: 11px;
       color: var(--text-dim);
@@ -611,6 +627,14 @@
       if (s < 60) return s + 's';
       if (s < 3600) return Math.floor(s / 60) + 'm';
       return Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm';
+    }
+
+    // `/Users/me/projects/x` reads as `~/projects/x`: the home prefix is the
+    // same on every card, so it is noise, but the rest is not.
+    function shortPath(cwd, home) {
+      if (!cwd) return '';
+      if (home && cwd.startsWith(home)) return '~' + cwd.slice(home.length);
+      return cwd;
     }
 
     function timeAgo(iso) {
@@ -871,7 +895,7 @@
       );
     }
 
-    function SessionCard({ session }) {
+    function SessionCard({ session, homeDir }) {
       const [expanded, setExpanded] = useState(false);
       const [log, setLog] = useState([]);
       // Open by default only while something is still running.
@@ -921,7 +945,20 @@
               e('span', { className: 'status-dot ' + st }),
               session.label || session.sessionId.substring(0, 8)
             ),
-            session.gitBranch ? e('div', { className: 'git-branch' }, session.gitBranch) : null
+            // The label is only the folder name, so the path goes here rather
+            // than living solely in a tooltip - a tooltip is no use on a phone
+            // and nobody hovers to find out where a project is. The branch was
+            // a bare name with nothing saying what it was.
+            e('div', { className: 'card-sub' },
+              session.cwd ? e('div', { className: 'sub-row' },
+                e('span', { className: 'sub-key' }, 'Path'),
+                e('span', { className: 'sub-val', title: session.cwd }, shortPath(session.cwd, homeDir))
+              ) : null,
+              session.gitBranch ? e('div', { className: 'sub-row' },
+                e('span', { className: 'sub-key' }, 'Branch'),
+                e('span', { className: 'sub-val' }, session.gitBranch)
+              ) : null
+            )
           ),
           e('div', { style: { display: 'flex', gap: '6px', alignItems: 'center' } },
             session.mode && session.mode !== 'normal'
@@ -1111,6 +1148,7 @@
       const [lastFetch, setLastFetch] = useState(() => Date.now());
       const [totals, setTotals] = useState(null);
       const [usage, setUsage] = useState(null);
+      const [homeDir, setHomeDir] = useState('');
       const [now, setNow] = useState(Date.now());
       const lastFetchRef = useRef(lastFetch);
       lastFetchRef.current = lastFetch;
@@ -1181,6 +1219,7 @@
             setSessions(data.sessions || []);
             setTotals(data.totals || null);
             setUsage(data.usage || null);
+            if (data.homeDir) setHomeDir(data.homeDir);
             const t = Date.now();
             setLastFetch(t);
             setNow(t);
@@ -1383,7 +1422,7 @@
                 : 'Clear the filter, or click "show stale" to include older sessions.')
             )
           : e('div', { className: 'grid' },
-              visible.map(s => e(SessionCard, { key: s.sessionId, session: s }))
+              visible.map(s => e(SessionCard, { key: s.sessionId, session: s, homeDir: homeDir }))
             )
       );
     }
