@@ -625,8 +625,14 @@ function processFile(filePath) {
 }
 
 // --- Express Server ---
+// Demo mode serves a fixed made-up dataset and never opens a real log. Its
+// routes are registered first, so they win over the ones below.
+const DEMO = process.env.DEMO === '1';
+
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
+
+if (DEMO) require('./demo').mountDemo(app);
 
 app.post('/api/open-folder', express.json(), (req, res) => {
   const folder = req.body.path;
@@ -897,26 +903,28 @@ const WATCH_DIR = path.join(os.homedir(), '.claude', 'projects');
 const PORT = Number(process.env.PORT) || 3456;
 const HOST = '127.0.0.1';
 
-console.log(`Watching: ${WATCH_DIR}`);
+console.log(DEMO ? 'Demo mode: serving made-up data, reading no real logs' : `Watching: ${WATCH_DIR}`);
 console.log(`Dashboard: http://localhost:${PORT}`);
-
-// Watch the projects directory (chokidar v5 needs directory, not glob)
-const watcher = chokidar.watch(WATCH_DIR, {
-  persistent: true,
-  ignoreInitial: false,
-  depth: 4, // reach projects/hash/session/subagents/*.jsonl
-  awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
-});
 
 function shouldProcessFile(filePath) {
   return filePath.endsWith('.jsonl') && !path.basename(filePath).includes('compact');
 }
-watcher.on('add', (filePath) => {
-  if (shouldProcessFile(filePath)) processFile(filePath);
-});
-watcher.on('change', (filePath) => {
-  if (shouldProcessFile(filePath)) processFile(filePath);
-});
+
+// Watch the projects directory (chokidar v5 needs directory, not glob)
+if (!DEMO) {
+  const watcher = chokidar.watch(WATCH_DIR, {
+    persistent: true,
+    ignoreInitial: false,
+    depth: 4, // reach projects/hash/session/subagents/*.jsonl
+    awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
+  });
+  watcher.on('add', (filePath) => {
+    if (shouldProcessFile(filePath)) processFile(filePath);
+  });
+  watcher.on('change', (filePath) => {
+    if (shouldProcessFile(filePath)) processFile(filePath);
+  });
+}
 
 // Fold long-dead sessions into the archived totals and release their memory.
 function sweepOldSessions() {
@@ -938,8 +946,10 @@ function sweepOldSessions() {
     console.log(`Archived ${dropped} session(s) older than ${RETENTION_DAYS} days`);
   }
 }
-setInterval(sweepOldSessions, SWEEP_INTERVAL_MS).unref();
-setTimeout(sweepOldSessions, 30_000).unref(); // after the startup replay settles
+if (!DEMO) {
+  setInterval(sweepOldSessions, SWEEP_INTERVAL_MS).unref();
+  setTimeout(sweepOldSessions, 30_000).unref(); // after the startup replay settles
+}
 
 const server = app.listen(PORT, HOST, () => {
   console.log(`Server running on http://${HOST}:${PORT}`);

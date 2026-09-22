@@ -5,6 +5,9 @@ context usage, status, and activity across all your terminals on one page.
 
 ![Claude Code Dashboard screenshot](Screenshot.png)
 
+<sub>Captured in demo mode. Every project, figure and log line above is made up — see
+[Demo mode](#demo-mode).</sub>
+
 > Began as a fork of [Stargx/claude-code-dashboard](https://github.com/Stargx/claude-code-dashboard).
 > The watcher and the interface have since been largely rewritten: corrected pricing and
 > token accounting, a hardened file reader, subagent and background-task views, a usage
@@ -53,6 +56,20 @@ Open **http://localhost:3456**.
 
 Run it in its own terminal tab. Your Claude Code sessions run as normal; the dashboard
 watches them from the side.
+
+## Demo Mode
+
+```bash
+DEMO=1 npm start
+```
+
+Serves a fixed, made-up dataset instead of your logs. Nothing under `~/.claude` is
+opened and the file watcher never starts. Use it to try the interface before installing,
+or to regenerate the screenshot above without publishing real project names or real spend.
+
+The fixture lives in `demo.js`. It holds one thinking session, one waiting, two idle and
+two stale, so every status colour appears at once. Timestamps are relative to start-up,
+so the cards always read as "now". Edit that file to change what the screenshot shows.
 
 ## Install With A Coding Agent
 
@@ -210,6 +227,7 @@ All optional, all environment variables:
 | `RETENTION_DAYS` | `30` | Sessions idle longer than this are archived |
 | `LOG_KEEP` | `200` | Log lines held per session |
 | `TASK_DIR` | `/tmp/claude-<uid>`, or `<temp>/claude` on Windows | Where Claude Code writes background task output |
+| `DEMO` | unset | `DEMO=1` serves made-up data and reads no real logs. See [Demo mode](#demo-mode) |
 
 ```bash
 PORT=8080 CONTEXT_WINDOW=1000000 npm start
