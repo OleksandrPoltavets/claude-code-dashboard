@@ -38,7 +38,10 @@ see which session is active.
   never reaches the session log, so it is read from their output files; click a row for
   the tail of it. The list folds too, and opens itself while a task is still running
 - **Recently touched files**, per session
-- **Expandable log feed**, fetched on demand
+- **Expandable log feed**, fetched on demand. Every row carries its argument — the
+  command, the pattern, the URL — and each tool call is followed by how it ended:
+  `ok` with the first line of output, or `err` with the exit code and the error.
+  **Click a row** for the full command and its output tail
 - **Click to open** a project folder, **git branch**, **permission mode badges**
 - **Phone-friendly** — the header and the card grid reflow down to a phone screen
 - **Cross-platform** — Windows, macOS, and Linux
@@ -321,6 +324,7 @@ repeatedly while streaming, so counting raw events roughly doubles both turns an
 | `GET /api/sessions/:id/log` | Recent log entries for one session |
 | `GET /api/sessions/:id/subagents/:agentId` | Summary, report, and step feed for one subagent |
 | `GET /api/sessions/:id/tasks/:taskId` | Status, exit code, and output tail for one background task |
+| `GET /api/sessions/:id/tools/:toolUseId` | Full input and output tail for one tool call |
 | `POST /api/open-folder` | Opens a path in the OS file manager |
 
 Logs are served separately because they were ~75% of every poll. Fetching them only for
@@ -333,6 +337,15 @@ the live output has to come from elsewhere. Claude Code writes it to
 `/tmp/claude-<uid>/<hash>/<session>/tasks/<taskId>.output`, and appends
 `[exited with code N]` or `[killed]` when one ends. A task with neither marker that has
 been silent for ten minutes is shown as `quiet`, not `run`.
+
+Claude Code records no exit code for a tool call. A failed Bash arrives as a result with
+`is_error` set and content opening `Exit code N`, so the code is parsed back out of that
+text. The `toolUseResult` object beside each result carries the useful detail, but its
+shape differs per tool — Bash has `stdout`/`stderr`, WebFetch an HTTP `code`, Edit a
+`structuredPatch` — so the one-line outcome is written per tool rather than from one
+common field. An output too large to inline is not in the log at all: Claude Code writes
+it to a file and leaves a `persistedOutputPath`, which the detail endpoint reads on
+demand.
 
 The same notifications name subagents: an agent's finish note is keyed by its agent id,
 so a finished subagent row carries its name too, and needs no other label. A running one
@@ -408,6 +421,10 @@ not know about subscription plans or quotas.
 - Subagent and background-task lists fold away, and open themselves while one is running
 - Header and card grid reflow for a phone screen
 - Costs read with two decimals and a thousands separator
+- Log rows carry the tool's argument. Upstream only ever appended `file_path`, so every
+  Bash, Grep and WebFetch row showed a bare tool name
+- Each tool call is followed by how it ended, and a row opens to the full call and its
+  output tail
 
 **Subagents**
 

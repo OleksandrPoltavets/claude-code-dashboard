@@ -121,6 +121,19 @@ const TASK_QUIET_MS = 10 * 60 * 1000;
 const TASK_NAME_CACHE = 200;
 const PENDING_NAME_CACHE = 500;
 const TASK_TAIL_BYTES = 20_000;
+
+// Tool results. Claude Code records no exit code field: a failed Bash surfaces
+// as is_error with the content opening "Exit code N", so that is parsed out.
+// The shape of `toolUseResult` differs per tool - Bash carries stdout/stderr,
+// WebFetch carries an HTTP code, Read carries the file - so summaries are
+// written per tool rather than from one common field.
+const TOOL_SUMMARY_CHARS = 140;
+// Output tail held in memory per call, for the expanded row. Large outputs are
+// not in the log at all: Claude Code writes them to persistedOutputPath and the
+// detail endpoint reads that file on demand instead.
+const TOOL_OUTPUT_KEEP = 2_000;
+const TOOL_DETAIL_KEEP = 50; // calls per session that stay expandable
+const TOOL_EXIT_RE = /^Exit code (\d+)/;
 // Claude Code closes a background task's output with one of these: a clean exit
 // carries its code, a terminated one does not.
 const TASK_EXIT_RE = /\[exited with code (-?\d+)\]\s*$/;
@@ -288,10 +301,127 @@ function getOrCreateSession(sessionId) {
       version: '',
       subagents: {}, // agentId -> see the subagent block in processEvent
       taskNames: {}, // background task id -> human name, see noteTaskNotification
+      toolDetails: new Map(), // tool_use_id -> see recordToolCall/recordToolResult
     });
     seenMessageIds.set(sessionId, new Map()); // messageId -> {in, out, cacheCreate, cacheRead}
   }
   return sessions.get(sessionId);
+}
+
+// A tool_result's content is a string on most tools and an array of blocks on
+// some; both reduce to text.
+function resultText(content) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content.filter(b => b && b.type === 'text' && typeof b.text === 'string')
+    .map(b => b.text).join('\n');
+}
+
+function firstLine(text) {
+  const line = String(text).split('\n').find(l => l.trim());
+  return line ? line.trim().substring(0, TOOL_SUMMARY_CHARS) : '';
+}
+
+// One line describing how a call ended. `toolUseResult` has a different shape
+// per tool, so the useful fields are picked per tool and everything else falls
+// back to the first line of the result text.
+function summariseResult(name, isError, text, extra) {
+  const r = extra && typeof extra === 'object' && !Array.isArray(extra) ? extra : {};
+
+  if (r.interrupted) return 'interrupted';
+  if (r.timedOutAfterMs) return `timed out after ${Math.round(r.timedOutAfterMs / 1000)}s`;
+
+  if (isError) {
+    const exit = TOOL_EXIT_RE.exec(text);
+    const rest = firstLine(text.replace(TOOL_EXIT_RE, '').trim());
+    if (exit) return `exit ${exit[1]}${rest ? ' - ' + rest : ''}`;
+    return firstLine(text) || 'failed';
+  }
+
+  switch (name) {
+    case 'Bash': {
+      if (r.persistedOutputSize) return `${formatBytes(r.persistedOutputSize)} saved to file`;
+      const out = firstLine(r.stdout || '') || firstLine(r.stderr || '');
+      if (r.gitOperation) return `${r.gitOperation}${out ? ' - ' + out : ''}`;
+      return out || 'no output';
+    }
+    case 'WebFetch':
+      return `${r.code || 'ok'}${r.codeText ? ' ' + r.codeText : ''}`
+        + (r.bytes ? ` - ${formatBytes(r.bytes)}` : '')
+        + (r.durationMs ? ` in ${Math.round(r.durationMs / 1000)}s` : '');
+    case 'WebSearch':
+      return `${(r.results || []).length || r.searchCount || 0} result(s)`;
+    case 'Edit':
+    case 'Write': {
+      const patch = Array.isArray(r.structuredPatch) ? r.structuredPatch : [];
+      const lines = patch.reduce((a, h) => a + (Array.isArray(h.lines) ? h.lines.length : 0), 0);
+      return lines ? `${patch.length} hunk(s), ${lines} line(s)` : 'written';
+    }
+    case 'Read':
+      return r.file && r.file.numLines ? `${r.file.numLines} line(s)` : 'read';
+    case 'Agent':
+      return r.status ? `agent ${r.status}` : 'done';
+    default:
+      return firstLine(text) || 'ok';
+  }
+}
+
+function formatBytes(n) {
+  if (!n) return '0B';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'MB';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'KB';
+  return n + 'B';
+}
+
+// Remember a call so its result can be joined to it, and so an expanded row can
+// show what was actually run.
+function recordToolCall(session, block, ts) {
+  session.toolDetails.set(block.id, {
+    toolUseId: block.id,
+    name: block.name,
+    input: block.input || {},
+    startedAt: ts,
+    done: false,
+    ok: null,
+    summary: '',
+    output: '',
+    truncated: false,
+    persistedOutputPath: '',
+  });
+  while (session.toolDetails.size > TOOL_DETAIL_KEEP) {
+    session.toolDetails.delete(session.toolDetails.keys().next().value);
+  }
+}
+
+// Join a result to its call, write the one-line outcome into the log, and keep
+// a bounded tail for the expanded row.
+function recordToolResult(session, block, event, ts) {
+  const detail = session.toolDetails.get(block.tool_use_id);
+  const name = detail ? detail.name : 'tool';
+  const text = resultText(block.content);
+  const extra = event.toolUseResult;
+  const isError = block.is_error === true;
+  const summary = summariseResult(name, isError, text, extra);
+
+  if (detail) {
+    const body = (extra && typeof extra === 'object' && (extra.stdout || extra.stderr))
+      ? [extra.stdout, extra.stderr].filter(Boolean).join('\n')
+      : text;
+    detail.done = true;
+    detail.ok = !isError;
+    detail.summary = summary;
+    detail.truncated = body.length > TOOL_OUTPUT_KEEP;
+    detail.output = body.slice(-TOOL_OUTPUT_KEEP);
+    detail.endedAt = ts;
+    if (extra && extra.persistedOutputPath) detail.persistedOutputPath = extra.persistedOutputPath;
+  }
+
+  addToRecentLog(session, {
+    time: ts,
+    type: isError ? 'err' : 'ok',
+    msg: summary,
+    toolUseId: block.tool_use_id,
+  });
 }
 
 function addToRecentLog(session, entry) {
@@ -424,10 +554,14 @@ function processEvent(event, projectHash) {
     if (Array.isArray(content)) {
       for (const block of content) {
         if (block.type === 'tool_use') {
+          // describeTool covers command/pattern/url as well as file_path, so a
+          // Bash or Grep row carries its argument instead of just the name.
+          recordToolCall(session, block, ts);
           addToRecentLog(session, {
             time: ts,
             type: 'tool',
-            msg: block.name + (block.input?.file_path ? `: ${path.basename(block.input.file_path)}` : ''),
+            msg: describeTool(block),
+            toolUseId: block.id,
           });
         } else if (block.type === 'text' && block.text) {
           const snippet = block.text.substring(0, 120);
@@ -509,9 +643,11 @@ function processEvent(event, projectHash) {
     }
   }
   if (event.type === 'user' && Array.isArray(content)) {
-    // The tool result is what ties the launching call to the task id.
     for (const block of content) {
-      if (block.type !== 'tool_result' || typeof block.content !== 'string') continue;
+      if (block.type !== 'tool_result') continue;
+      recordToolResult(session, block, event, ts);
+      // The tool result is also what ties the launching call to the task id.
+      if (typeof block.content !== 'string') continue;
       const m = block.content.match(/background with ID: ([A-Za-z0-9_-]+)/);
       if (!m) continue;
       setTaskName(session, m[1], pendingTaskNames.get(block.tool_use_id));
@@ -665,7 +801,7 @@ app.get('/api/sessions', (req, res) => {
         if ((a.status === 'thinking') !== (b.status === 'thinking')) return a.status === 'thinking' ? -1 : 1;
         return new Date(b.lastEventAt || 0) - new Date(a.lastEventAt || 0);
       });
-    const { recentLog, usageByModel, taskNames, ...rest } = session;
+    const { recentLog, usageByModel, taskNames, toolDetails, ...rest } = session;
     all.push({
       ...rest,
       status,
@@ -784,6 +920,51 @@ app.get('/api/sessions/:id/log', (req, res) => {
   const session = sessions.get(req.params.id);
   if (!session) return res.status(404).json({ error: 'Unknown session' });
   res.json(session.recentLog);
+});
+
+// Full input and output for one tool call, fetched when a log row is expanded.
+// Kept out of the poll and out of the log payload: only the newest
+// TOOL_DETAIL_KEEP calls per session are held, each with a bounded output tail.
+app.get('/api/sessions/:id/tools/:toolUseId', (req, res) => {
+  const session = sessions.get(req.params.id);
+  if (!session) return res.status(404).json({ error: 'Unknown session' });
+
+  const toolUseId = req.params.toolUseId;
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(toolUseId)) {
+    return res.status(400).json({ error: 'Bad tool id' });
+  }
+  const detail = session.toolDetails.get(toolUseId);
+  if (!detail) return res.status(404).json({ error: 'Rolled out of the kept window' });
+
+  // A large output never reaches the log: Claude Code writes it to a file and
+  // leaves a pointer, so read the tail of that file rather than the stub.
+  let output = detail.output;
+  let truncated = detail.truncated;
+  if (detail.persistedOutputPath) {
+    try {
+      const st = fs.lstatSync(detail.persistedOutputPath);
+      if (st.isFile()) {
+        output = readTail(detail.persistedOutputPath, TASK_TAIL_BYTES, st.size);
+        truncated = st.size > TASK_TAIL_BYTES;
+      }
+    } catch { /* the file is gone; the inline tail stands */ }
+  }
+
+  res.json({
+    toolUseId,
+    name: detail.name,
+    input: detail.input,
+    done: detail.done,
+    ok: detail.ok,
+    summary: detail.summary,
+    startedAt: detail.startedAt,
+    endedAt: detail.endedAt || null,
+    durationMs: detail.startedAt && detail.endedAt
+      ? new Date(detail.endedAt) - new Date(detail.startedAt) : 0,
+    persisted: Boolean(detail.persistedOutputPath),
+    truncated,
+    output,
+  });
 });
 
 // One line of a subagent transcript, in the same shape as recentLog entries.

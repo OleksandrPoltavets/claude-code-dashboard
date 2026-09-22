@@ -221,27 +221,57 @@ const SESSIONS = [
 
 // Log lines for the expanded feed, keyed by session id. Short on purpose: the
 // card shows the newest handful, and a screenshot never scrolls.
+// Tool calls behind the log rows. A row with a `toolUseId` is clickable and
+// fetches its entry from TOOL_DETAIL below, the same shape the watcher serves.
 const LOGS = {
   'demo-0000-0000-0000-000000000001': [
-    { time: ago(9 * MIN), type: 'tool', msg: 'Grep: idempotency_key' },
-    { time: ago(8 * MIN), type: 'tool', msg: 'Read: refund_service.rb' },
+    { time: ago(9 * MIN), type: 'tool', msg: 'Grep: idempotency_key', toolUseId: 'demo-tool-1' },
+    { time: ago(9 * MIN), type: 'ok', msg: '7 file(s)', toolUseId: 'demo-tool-1' },
+    { time: ago(8 * MIN), type: 'tool', msg: 'Read: refund_service.rb', toolUseId: 'demo-tool-2' },
+    { time: ago(8 * MIN), type: 'ok', msg: '214 line(s)', toolUseId: 'demo-tool-2' },
     { time: ago(7 * MIN), type: 'think', msg: 'Two paths reach Stripe::Refund.create. Only one carries the key.' },
-    { time: ago(6 * MIN), type: 'tool', msg: 'Task: general-purpose' },
-    { time: ago(4 * MIN), type: 'tool', msg: 'Edit: refund_service.rb' },
-    { time: ago(2 * MIN), type: 'tool', msg: 'Bash: bundle exec rspec spec/services' },
-    { time: ago(20 * 1000), type: 'tool', msg: 'Read: refunds_spec.rb' },
+    { time: ago(6 * MIN), type: 'tool', msg: 'Task: general-purpose', toolUseId: 'demo-tool-3' },
+    { time: ago(4 * MIN), type: 'tool', msg: 'Edit: refund_service.rb', toolUseId: 'demo-tool-4' },
+    { time: ago(4 * MIN), type: 'ok', msg: '2 hunk(s), 11 line(s)', toolUseId: 'demo-tool-4' },
+    { time: ago(3 * MIN), type: 'tool', msg: 'Bash: bundle exec rspec spec/services/refund_spec.rb', toolUseId: 'demo-tool-5' },
+    { time: ago(3 * MIN), type: 'err', msg: 'exit 1 - 1 example, 1 failure', toolUseId: 'demo-tool-5' },
+    { time: ago(2 * MIN), type: 'tool', msg: 'Bash: bundle exec rspec spec/services', toolUseId: 'demo-tool-6' },
+    { time: ago(90 * 1000), type: 'ok', msg: '3 examples, 0 failures', toolUseId: 'demo-tool-6' },
+    { time: ago(20 * 1000), type: 'tool', msg: 'Read: refunds_spec.rb', toolUseId: 'demo-tool-7' },
   ],
   'demo-0000-0000-0000-000000000002': [
-    { time: ago(4 * MIN), type: 'tool', msg: 'Read: CartDrawer.tsx' },
-    { time: ago(3 * MIN), type: 'tool', msg: 'Edit: useCart.ts' },
+    { time: ago(4 * MIN), type: 'tool', msg: 'Read: CartDrawer.tsx', toolUseId: 'demo-tool-8' },
+    { time: ago(3 * MIN), type: 'tool', msg: 'Edit: useCart.ts', toolUseId: 'demo-tool-9' },
+    { time: ago(3 * MIN), type: 'ok', msg: '1 hunk(s), 6 line(s)', toolUseId: 'demo-tool-9' },
     { time: ago(90 * 1000), type: 'think', msg: 'The drawer keeps its own copy of the cart, so it drifts after a failed update.' },
-    { time: ago(22 * 1000), type: 'ok', msg: 'Waiting for your answer' },
+    { time: ago(22 * 1000), type: 'user', msg: 'Waiting for your answer' },
   ],
   'demo-0000-0000-0000-000000000003': [
-    { time: ago(58 * MIN), type: 'tool', msg: 'Task: general-purpose' },
-    { time: ago(51 * MIN), type: 'tool', msg: 'Read: versions.tf' },
+    { time: ago(58 * MIN), type: 'tool', msg: 'Task: general-purpose', toolUseId: 'demo-tool-10' },
+    { time: ago(51 * MIN), type: 'tool', msg: 'Read: versions.tf', toolUseId: 'demo-tool-11' },
     { time: ago(46 * MIN), type: 'think', msg: 'Three providers float on a minor-version constraint.' },
   ],
+};
+
+const TOOL_DETAIL = {
+  'demo-tool-1': { name: 'Grep', input: { pattern: 'idempotency_key' }, ok: true, summary: '7 file(s)', durationMs: 340,
+    output: 'app/services/refund_service.rb\napp/models/refund.rb\nspec/services/refunds_spec.rb\ndb/migrate/20260714_add_idempotency_key.rb' },
+  'demo-tool-2': { name: 'Read', input: { file_path: '/home/dev/acme/checkout-api/app/services/refund_service.rb' }, ok: true, summary: '214 line(s)', durationMs: 90,
+    output: '(file contents)' },
+  'demo-tool-3': { name: 'Task', input: { description: 'trace refund retry path' }, ok: null, done: false, summary: 'running', durationMs: 0,
+    output: '' },
+  'demo-tool-4': { name: 'Edit', input: { file_path: '/home/dev/acme/checkout-api/app/services/refund_service.rb' }, ok: true, summary: '2 hunk(s), 11 line(s)', durationMs: 120,
+    output: '@@ -88,6 +88,9 @@\n   def retry_refund(charge)\n-    Stripe::Refund.create(charge: charge.id)\n+    Stripe::Refund.create(\n+      charge: charge.id,\n+      idempotency_key: charge.refund_idempotency_key,\n+    )' },
+  'demo-tool-5': { name: 'Bash', input: { command: 'bundle exec rspec spec/services/refund_spec.rb' }, ok: false, summary: 'exit 1 - 1 example, 1 failure', durationMs: 4210,
+    output: 'F\n\nFailures:\n\n  1) Refunds reuses the idempotency key on retry\n     Failure/Error: expect(Stripe::Refund).to have_received(:create).with(hash_including(idempotency_key: key))\n       #<Stripe::Refund (class)> received :create with unexpected arguments\n\n1 example, 1 failure' },
+  'demo-tool-6': { name: 'Bash', input: { command: 'bundle exec rspec spec/services' }, ok: true, summary: '3 examples, 0 failures', durationMs: 4870,
+    output: 'Refunds\n  issues one refund for a charge\n  reuses the idempotency key on retry\n  rejects a second refund for the same charge\n\nFinished in 4.21 seconds (files took 1.87 seconds to load)\n3 examples, 0 failures' },
+  'demo-tool-7': { name: 'Read', input: { file_path: '/home/dev/acme/checkout-api/spec/services/refunds_spec.rb' }, ok: null, done: false, summary: 'running', durationMs: 0, output: '' },
+  'demo-tool-8': { name: 'Read', input: { file_path: '/home/dev/acme/web-storefront/src/components/CartDrawer.tsx' }, ok: true, summary: '141 line(s)', durationMs: 70, output: '(file contents)' },
+  'demo-tool-9': { name: 'Edit', input: { file_path: '/home/dev/acme/web-storefront/src/hooks/useCart.ts' }, ok: true, summary: '1 hunk(s), 6 line(s)', durationMs: 110,
+    output: '@@ -24,4 +24,7 @@\n-  const [cart, setCart] = useState(initial)\n+  const cart = useSyncExternalStore(\n+    cartStore.subscribe,\n+    cartStore.get,\n+  )' },
+  'demo-tool-10': { name: 'Task', input: { description: 'audit provider pins' }, ok: true, summary: 'agent done', durationMs: 420000, output: '(see the subagent row)' },
+  'demo-tool-11': { name: 'Read', input: { file_path: '/home/dev/acme/infra-terraform/versions.tf' }, ok: true, summary: '28 line(s)', durationMs: 60, output: '(file contents)' },
 };
 
 const SUBAGENT_DETAIL = {
@@ -359,6 +389,23 @@ function mountDemo(app) {
       ...task,
       truncated: false,
       output: TASK_OUTPUT[task.taskId] || '',
+    });
+  });
+
+  app.get('/api/sessions/:id/tools/:toolUseId', (req, res) => {
+    const d = TOOL_DETAIL[req.params.toolUseId];
+    if (!d) return res.status(404).json({ error: 'Unknown tool call' });
+    res.json({
+      toolUseId: req.params.toolUseId,
+      name: d.name,
+      input: d.input,
+      done: d.done !== false,
+      ok: d.ok,
+      summary: d.summary,
+      durationMs: d.durationMs,
+      persisted: false,
+      truncated: false,
+      output: d.output,
     });
   });
 

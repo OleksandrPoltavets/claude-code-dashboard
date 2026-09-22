@@ -440,10 +440,40 @@
     .log-type.think { color: var(--green); }
     .log-type.user  { color: var(--yellow); }
     .log-type.error { color: var(--red); }
+    .log-type.err   { color: var(--red); }
+    .log-type.ok    { color: var(--text-dim); }
     .log-msg {
       white-space: pre-wrap;
       word-break: break-word;
     }
+
+    /* A row backed by a tool call opens to the full input and output. The
+       marker is a shape as well as a colour, so the state reads without it. */
+    .log-entry.has-detail { cursor: pointer; }
+    .log-entry.has-detail:hover { color: var(--text); }
+    .log-entry.has-detail:hover .log-msg { text-decoration: underline; }
+    .log-mark {
+      flex-shrink: 0;
+      min-width: 9px;
+      color: var(--text-dim);
+      opacity: 0.55;
+    }
+    .log-entry.has-detail:hover .log-mark { opacity: 1; }
+    .tool-detail {
+      margin: 4px 0 8px 63px;
+      padding: 6px 8px;
+      border-left: 2px solid var(--border);
+      background: var(--bg);
+      font-size: 11px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 320px;
+      overflow-y: auto;
+    }
+    .tool-detail .k { color: var(--text-dim); }
+    .tool-detail .cmd { color: var(--blue); display: block; margin-bottom: 6px; }
+    .tool-detail .out { color: var(--text); }
+    .tool-detail .note { color: var(--text-dim); font-style: italic; }
 
     /* Empty state */
     .empty {
@@ -921,12 +951,66 @@
 
         expanded ? e('div', { className: 'log-feed' },
           log.slice().reverse().map((entry, i) =>
-            e('div', { key: i, className: 'log-entry' },
-              e('span', { className: 'log-time' }, formatTime(entry.time)),
-              e('span', { className: 'log-type ' + entry.type }, entry.type),
-              e('span', { className: 'log-msg' }, entry.msg)
-            )
+            e(LogRow, { key: i, entry: entry, sessionId: session.sessionId })
           )
+        ) : null
+      );
+    }
+
+    // One log line. A row carrying a toolUseId opens to the call's full input
+    // and its output tail, fetched on click - the same reason subagent
+    // transcripts are: it keeps the poll and the log payload small.
+    function LogRow({ entry, sessionId }) {
+      const [open, setOpen] = useState(false);
+      const [detail, setDetail] = useState(null);
+      const [error, setError] = useState('');
+      const hasDetail = Boolean(entry.toolUseId);
+
+      function toggle() {
+        if (!hasDetail) return;
+        if (open) { setOpen(false); return; }
+        setOpen(true);
+        if (detail || error) return;
+        fetch('/api/sessions/' + sessionId + '/tools/' + entry.toolUseId)
+          .then(r => r.ok ? r.json() : r.json().then(j => Promise.reject(j.error || r.status)))
+          .then(setDetail)
+          .catch(err => setError(String(err)));
+      }
+
+      const input = detail && detail.input ? detail.input : {};
+      const call = input.command || input.file_path || input.path || input.pattern || input.url || '';
+
+      return e(React.Fragment, null,
+        e('div', {
+          className: 'log-entry' + (hasDetail ? ' has-detail' : ''),
+          onClick: toggle,
+          role: hasDetail ? 'button' : undefined,
+          tabIndex: hasDetail ? 0 : undefined,
+          onKeyDown: hasDetail ? (ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(); } }) : undefined,
+          title: hasDetail ? (open ? 'Hide the full call' : 'Show the full call and its output') : undefined,
+        },
+          e('span', { className: 'log-time' }, formatTime(entry.time)),
+          e('span', { className: 'log-type ' + entry.type }, entry.type),
+          e('span', { className: 'log-mark' }, hasDetail ? (open ? '−' : '+') : ''),
+          e('span', { className: 'log-msg' }, entry.msg)
+        ),
+        open ? e('div', { className: 'tool-detail' },
+          error
+            ? e('span', { className: 'note' }, error)
+            : !detail
+              ? e('span', { className: 'note' }, 'loading...')
+              : e(React.Fragment, null,
+                  call ? e('span', { className: 'cmd' }, call) : null,
+                  e('span', { className: 'k' },
+                    detail.name,
+                    detail.done ? (detail.ok ? ' · ok' : ' · failed') : ' · running',
+                    detail.durationMs >= 1000 ? ' · ' + formatDuration(detail.durationMs) : '',
+                    detail.persisted ? ' · output read from file' : '',
+                    '\n'
+                  ),
+                  detail.truncated ? e('span', { className: 'note' }, '(tail only)\n') : null,
+                  e('span', { className: 'out' }, detail.output || '(no output)')
+                )
         ) : null
       );
     }
