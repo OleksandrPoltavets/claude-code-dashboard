@@ -906,6 +906,23 @@ app.get('/api/sessions', (req, res) => {
     if (aToday !== bToday) return bToday - aToday; // active today first
     return (a.label || '').localeCompare(b.label || '');
   });
+
+  // What the newest-per-project collapse is holding back, and how much of it
+  // the hide-stale filter would drop on arrival. Without these the "all
+  // sessions" button can fetch a hundred sessions and change nothing on screen,
+  // with no way to know that before clicking. The loop above only marks the
+  // rows in `result`, so a held-back session still reads 'idle' here.
+  let hiddenCount = 0, hiddenStaleCount = 0;
+  if (req.query.all !== '1') {
+    const shown = new Set(result.map(s => s.sessionId));
+    for (const s of all) {
+      if (shown.has(s.sessionId)) continue;
+      hiddenCount++;
+      if (s.status === 'idle' && (!s.lastEventAt || new Date(s.lastEventAt) < todayStart)) {
+        hiddenStaleCount++;
+      }
+    }
+  }
   // Totals cover every session the watcher knows about, not just the cards on
   // screen - the list above hides all but the newest session per project.
   let totalCost = archived.costUSD, totalOut = archived.tokensOut, totalIn = archived.tokensIn;
@@ -923,6 +940,8 @@ app.get('/api/sessions', (req, res) => {
       tokensIn: totalIn,
       sessionCount: sessions.size + archived.sessionCount,
       shownCount: result.length,
+      hiddenCount,
+      hiddenStaleCount,
     },
     usage: buildUsage(),
     serverTime: new Date().toISOString(),

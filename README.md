@@ -301,7 +301,14 @@ Sessions 0/20 of 115    Output 13.4M out    Cost $2,269.13
 
 Fewer cards than sessions is normal. Each time you open Claude Code in a project you
 start a new session, so a project accumulates many. Only the newest per project gets a card.
-The `newest only` / `all sessions` button in the header switches between the two views.
+The `newest only` / `all sessions` button in the header switches between the two views,
+and carries the count it would add — `newest only (+135)`.
+
+**The two toggles chain.** `newest only` works server side; `hide stale` then filters what
+came back. Older sessions of a project are nearly always stale, so with `hide stale` on,
+switching to `all sessions` can fetch a hundred sessions and show none of them. When every
+held-back session is stale the button is disabled and says so, rather than doing nothing
+visible.
 
 The two cost figures cover different windows on purpose: the top row is **all time**,
 the usage row's `30 days` is the **last 30 days**.
@@ -353,7 +360,7 @@ repeatedly while streaming, so counting raw events roughly doubles both turns an
 
 | Endpoint | Returns |
 | --- | --- |
-| `GET /api/sessions` | `{ sessions, totals, usage, serverTime }` — `?all=1` skips the newest-per-project collapse |
+| `GET /api/sessions` | `{ sessions, totals, usage, serverTime }` — `?all=1` skips the newest-per-project collapse. `totals.hiddenCount` / `hiddenStaleCount` say what the collapse held back |
 | `GET /api/sessions/:id/log` | Recent log entries for one session |
 | `GET /api/sessions/:id/subagents/:agentId` | Summary, report, and step feed for one subagent |
 | `GET /api/sessions/:id/tasks/:taskId` | Status, exit code, and output tail for one background task |

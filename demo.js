@@ -355,6 +355,10 @@ function mountDemo(app) {
         tokensIn: sessions.reduce((a, s) => a + s.tokensIn, 0),
         sessionCount: 269,
         shownCount: sessions.length,
+        // Every demo session is a distinct project, so the newest-per-project
+        // collapse holds nothing back and the toggle has nothing to reveal.
+        hiddenCount: 0,
+        hiddenStaleCount: 0,
       },
       usage: {
         todayCost: sum(1, 'costUSD'),

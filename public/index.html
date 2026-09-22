@@ -374,6 +374,9 @@
     }
     .stale-toggle:hover { color: var(--text); border-color: var(--text-dim); }
     .stale-toggle.on { color: var(--blue); border-color: var(--blue); }
+    /* Clicking would fetch every held-back session and show none of them. */
+    .stale-toggle:disabled { opacity: 0.4; cursor: not-allowed; }
+    .stale-toggle:disabled:hover { color: var(--text-dim); border-color: var(--border); }
 
     .search-box {
       font-size: 11px;
@@ -1194,11 +1197,24 @@
               onClick: toggleStale,
               title: 'Sessions with no activity today'
             }, (hideStale ? 'show' : 'hide') + ' stale (' + staleCount + ')'),
-            e('button', {
-              className: 'stale-toggle' + (showAll ? ' on' : ''),
-              onClick: toggleShowAll,
-              title: 'By default only the newest idle session per project is listed'
-            }, showAll ? 'all sessions' : 'newest only'),
+            (() => {
+              const hidden = (totals && totals.hiddenCount) || 0;
+              const hiddenStale = (totals && totals.hiddenStaleCount) || 0;
+              // Every held-back session is stale and stale is hidden, so the
+              // click would fetch them all and change nothing. Say so instead.
+              const futile = !showAll && hideStale && hidden > 0 && hiddenStale === hidden;
+              return e('button', {
+                className: 'stale-toggle' + (showAll ? ' on' : ''),
+                onClick: toggleShowAll,
+                disabled: futile,
+                title: futile
+                  ? hidden + ' older session(s) are held back and every one is stale. '
+                    + 'Turn on "show stale" first, or this changes nothing.'
+                  : 'By default only the newest idle session per project is listed',
+              }, showAll
+                ? 'all sessions'
+                : 'newest only' + (hidden ? ' (+' + hidden + ')' : ''));
+            })(),
             e('button', {
               className: 'stale-toggle' + (alerts ? ' on' : ''),
               onClick: toggleAlerts,
