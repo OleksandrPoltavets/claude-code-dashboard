@@ -823,7 +823,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 if (DEMO) require('./demo').mountDemo(app);
 
 app.post('/api/open-folder', express.json(), (req, res) => {
-  const folder = req.body.path;
+  // express.json() leaves req.body undefined when the request carries no JSON
+  // content type, and an empty body parses to undefined too, so this cannot
+  // assume an object. Reading .path off undefined threw, and the resulting 500
+  // was an Express stack trace listing absolute source and node_modules paths.
+  const folder = req.body && req.body.path;
   if (!folder || typeof folder !== 'string') return res.status(400).json({ error: 'No path' });
   if (!fs.existsSync(folder)) return res.status(404).json({ error: 'Folder not found' });
   const { execFile } = require('child_process');
@@ -1167,6 +1171,18 @@ app.get('/api/sessions/:id/tasks/:taskId', (req, res) => {
     truncated: st.size > TASK_TAIL_BYTES,
     output,
   });
+});
+
+// Anything a route throws lands here instead of Express's default handler,
+// which renders a stack trace listing absolute source and node_modules paths.
+// This is a localhost tool, but a 500 should still not be a directory listing.
+app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
+  console.error('Request failed:', req.method, req.path, '-', err && err.message);
+  if (res.headersSent) return;
+  // A malformed body is the caller's mistake, and express.json() already
+  // labels it 400. Only an unlabelled error is genuinely ours.
+  const status = Number(err && (err.status || err.statusCode));
+  res.status(status >= 400 && status < 600 ? status : 500).json({ error: 'Request failed' });
 });
 
 // --- Start ---

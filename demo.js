@@ -376,7 +376,12 @@ function mountDemo(app) {
   });
 
   app.get('/api/sessions/:id/log', (req, res) => {
-    res.json(LOGS[req.params.id] || []);
+    // Own-property lookup: an id like `constructor` or `__proto__` would
+    // otherwise return something inherited from Object.prototype, and
+    // res.json() of a function sends an empty 200 the page cannot parse.
+    const log = Object.prototype.hasOwnProperty.call(LOGS, req.params.id) ? LOGS[req.params.id] : null;
+    if (!log) return res.status(404).json({ error: 'Unknown session' });
+    res.json(log);
   });
 
   app.get('/api/sessions/:id/subagents/:agentId', (req, res) => {
@@ -411,7 +416,8 @@ function mountDemo(app) {
   });
 
   app.get('/api/sessions/:id/tools/:toolUseId', (req, res) => {
-    const d = TOOL_DETAIL[req.params.toolUseId];
+    const d = Object.prototype.hasOwnProperty.call(TOOL_DETAIL, req.params.toolUseId)
+      ? TOOL_DETAIL[req.params.toolUseId] : null;
     if (!d) return res.status(404).json({ error: 'Unknown tool call' });
     res.json({
       toolUseId: req.params.toolUseId,
