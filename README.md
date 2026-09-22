@@ -13,7 +13,6 @@ context usage, status, and activity across all your terminals on one page.
 > rewritten: corrected pricing and token accounting, a hardened file reader, subagent and
 > background-task views, tool results in the log feed, reworked status detection, and a
 > poll payload that stays small as the rest grows.
-> See [Changes from upstream](#changes-from-upstream).
 
 ## Why?
 
@@ -386,6 +385,10 @@ No WebSockets, no build step, no cloud services. A Node.js process reading local
 Token counts are de-duplicated per message id. Claude Code rewrites the same message
 repeatedly while streaming, so counting raw events roughly doubles both turns and tokens.
 
+The reader is built for files being appended to underneath it. A second read of the same
+file is locked out while one is in flight, and a file that is truncated or rotated resets
+that session rather than freezing it.
+
 ### API
 
 | Endpoint | Returns |
@@ -461,61 +464,6 @@ whole session.
 Figures are estimates from your local logs at API rates. They are not a bill, and they do
 not know about subscription plans or quotas.
 
-## Changes from upstream
-
-What differs from [Stargx/claude-code-dashboard](https://github.com/Stargx/claude-code-dashboard),
-which this began as.
-
-**Accuracy**
-
-- 1-hour cache writes were billed at 1.25x; they cost 2x
-- Tokens are bucketed per model instead of repriced by whichever model ran last
-- Turn counts and subagent tokens no longer double-count streamed message rewrites
-- Header totals cover every session, not just the cards on screen
-- Context window is per session instead of a hardcoded 200K
-
-**File reader**
-
-- Concurrent reads of the same file are locked out
-- A line still being written is held until complete instead of parsed, failed, and skipped
-- A truncated or rotated file resets instead of freezing that session
-- Lines parse as chunks arrive rather than buffering whole files
-
-**Added**
-
-- Usage header with spend windows, token counts, top model, and a 30-day sparkline
-- Session start time, project filter, hide-stale toggle, connection health indicator
-- Show-all-sessions toggle for the older sessions a project accumulates
-- Subagent panel: every agent a session spawned, its full brief and full report, and its
-  tool-by-tool feed. Background-task panel, read from the output files the log never carries
-- Tool results in the log feed, with a row opening to the full call and its output tail
-- Reasoning effort and output mode, neither of which was read from the log before
-- In-page waiting banner, so an alert lands without notification permission or a tab bar
-- Demo mode (`DEMO=1`), for the screenshot and for trying the interface before installing
-- Boot instructions for launchd, systemd and Task Scheduler, and a paste-ready install
-  prompt for a coding agent
-- Phone layout; foldable subagent and background-task lists
-
-**Fixed**
-
-- **`waiting` was unreachable.** Status read the last event in the file, and a finished
-  turn is followed by hook `system` events within milliseconds — so the one state a
-  session sits in whenever it needs you was the one state that could never show
-- **Status had a dead zone.** `thinking` and `waiting` were only reachable under 15s and
-  `idle` was returned for everything from 15s to 60s, so a session working through a
-  one-minute command read as idle. Measured over 4,173 event gaps: p95 is 19s, p99 240s
-- **Permission badges covered only `bypassPermissions` and `acceptEdits`**, so a session
-  in `auto` or `plan` — the common cases — showed none. The dedicated `permission-mode`
-  event was dropped too, because it carries no timestamp
-- **Log rows showed a bare tool name.** Only `file_path` was ever appended, so every Bash,
-  Grep and WebFetch row lost its argument
-- **Finished subagents were filtered out of the API**, so a session usually showed none;
-  the report was also capped at 400 characters
-- A subagent transcript lives one directory deeper than a session log, so its events set
-  the session's project label to `subagents`
-- The log feed holds 200 lines instead of 30; raised text contrast; stale cards keep their
-  fade but clear on hover; costs read with two decimals and a thousands separator
-
 ## Tech Stack
 
 - **Backend**: Node.js, Express, chokidar
@@ -525,5 +473,7 @@ which this began as.
 
 ## License
 
-MIT. This fork is copyright Oleksandr Poltavets; the original work it builds on is
-copyright Cold Beam Games. Both notices are in [LICENSE](LICENSE).
+MIT. This work is copyright Oleksandr Poltavets; the original it builds on is copyright
+Cold Beam Games. Both notices are in [LICENSE](LICENSE), and the second one stays there
+permanently — MIT permits everything else but requires the original notice to travel with
+the code.
