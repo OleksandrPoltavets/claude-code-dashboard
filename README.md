@@ -120,37 +120,37 @@ The agent should end with a URL for you to open, normally **http://localhost:345
 
 ## Run It On Boot
 
-The dashboard is more useful when it is always there. The macOS block below is the setup
-running on the author's Mac: a `launchd` agent that starts the watcher at login, restarts
-it if it dies, and writes its output to `logs/`. The Linux and Windows blocks are the same
-idea for those systems.
+The dashboard is more useful when it is always there. Each block below starts the watcher
+at login, restarts it if it dies, and keeps its output in `logs/`.
 
 ### macOS (`launchd`)
 
-Write `~/Library/LaunchAgents/com.sancho.claude-code-dashboard.plist`. Replace the
-`sancho` in the label and in every path with your own user, and check that
-`/opt/homebrew/bin/node` is where your Node lives (`which node`).
+`launchd` will not expand `~` or `$HOME`, so a plist needs absolute paths. Rather than
+having you edit them in, the block below fills them from your own shell. Set `DASH` to
+wherever you cloned the repo and paste the rest as-is.
 
-```xml
+```bash
+DASH=~/projects/claude-code-dashboard          # where you cloned it
+mkdir -p "$DASH/logs"
+
+cat > ~/Library/LaunchAgents/local.claude-code-dashboard.plist <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-	<string>com.sancho.claude-code-dashboard</string>
+	<string>local.claude-code-dashboard</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>/opt/homebrew/bin/node</string>
-		<string>/Users/sancho/projects/claude-code-dashboard/watcher.js</string>
+		<string>$(which node)</string>
+		<string>$DASH/watcher.js</string>
 	</array>
 	<key>WorkingDirectory</key>
-	<string>/Users/sancho/projects/claude-code-dashboard</string>
+	<string>$DASH</string>
 	<key>EnvironmentVariables</key>
 	<dict>
 		<key>PORT</key>
 		<string>3456</string>
-		<key>CONTEXT_WINDOW</key>
-		<string>1000000</string>
 	</dict>
 	<key>RunAtLoad</key>
 	<true/>
@@ -159,38 +159,33 @@ Write `~/Library/LaunchAgents/com.sancho.claude-code-dashboard.plist`. Replace t
 	<key>ThrottleInterval</key>
 	<integer>10</integer>
 	<key>StandardOutPath</key>
-	<string>/Users/sancho/projects/claude-code-dashboard/logs/dashboard.log</string>
+	<string>$DASH/logs/dashboard.log</string>
 	<key>StandardErrorPath</key>
-	<string>/Users/sancho/projects/claude-code-dashboard/logs/dashboard.error.log</string>
+	<string>$DASH/logs/dashboard.error.log</string>
 </dict>
 </plist>
+EOF
+
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.claude-code-dashboard.plist
 ```
 
 `RunAtLoad` starts it at login. `KeepAlive` restarts it whenever it exits, and
 `ThrottleInterval` holds the restart to once every 10 seconds so a crash cannot spin into
-a loop. `CONTEXT_WINDOW` is 1M here because the author runs the 1M context tier; drop it
-if you do not.
-
-Create the log directory, then register the agent:
-
-```bash
-mkdir -p ~/projects/claude-code-dashboard/logs
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.sancho.claude-code-dashboard.plist
-```
+a loop. On the 1M context tier, add a `CONTEXT_WINDOW` key of `1000000` beside `PORT`.
 
 Check it is up, and read its output:
 
 ```bash
 launchctl list | grep claude-code-dashboard   # first column is the pid
 curl -s localhost:3456/api/sessions | head -c 200
-tail -f ~/projects/claude-code-dashboard/logs/dashboard.log
+tail -f "$DASH/logs/dashboard.log"
 ```
 
 After editing the plist, or after pulling new code, restart it:
 
 ```bash
-launchctl bootout gui/$(id -u)/com.sancho.claude-code-dashboard
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.sancho.claude-code-dashboard.plist
+launchctl bootout gui/$(id -u)/local.claude-code-dashboard
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.claude-code-dashboard.plist
 ```
 
 To stop it starting at login, boot it out and delete the plist. `logs/` is in
