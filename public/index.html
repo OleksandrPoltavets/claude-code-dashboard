@@ -451,7 +451,9 @@
     .log-type.user  { color: var(--yellow); }
     .log-type.error { color: var(--red); }
     .log-type.err   { color: var(--red); }
-    .log-type.ok    { color: var(--text-dim); }
+    /* Centred and dim so the arrow reads as a connector to the row above
+       rather than as another word in a column of words. */
+    .log-type.ok    { color: var(--text-dim); opacity: 0.75; text-align: center; }
     .log-msg {
       white-space: pre-wrap;
       word-break: break-word;
@@ -1025,7 +1027,14 @@
           title: hasDetail ? (open ? 'Hide the full call' : 'Show the full call and its output') : undefined,
         },
           e('span', { className: 'log-time' }, formatTime(entry.time)),
-          e('span', { className: 'log-type ' + entry.type }, entry.type),
+          // A successful result is marked, not named: every one of them would
+          // say the same word, and the row above already says what ran. `err`
+          // keeps its word so a failure is the only thing in this column that
+          // reads as text.
+          e('span', {
+            className: 'log-type ' + entry.type,
+            title: entry.type === 'ok' ? 'result' : entry.type,
+          }, entry.type === 'ok' ? '→' : entry.type),
           e('span', { className: 'log-mark' }, hasDetail ? (open ? '−' : '+') : ''),
           e('span', { className: 'log-msg' }, entry.msg)
         ),

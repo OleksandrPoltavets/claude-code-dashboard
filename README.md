@@ -43,9 +43,10 @@ see which session is active.
   the tail of it. The list folds too, and opens itself while a task is still running
 - **Recently touched files**, per session
 - **Expandable log feed**, fetched on demand. Every row carries its argument — the
-  command, the pattern, the URL — and each tool call is followed by how it ended:
-  `ok` with the first line of output, or `err` with the exit code and the error.
-  **Click a row** for the full command and its output tail
+  command, the pattern, the URL — and each tool call is followed by how it ended.
+  A success is a dim `→` carrying the first line of output; a failure is a red `err`
+  with the exit code, so failures are the only thing in that column that reads as a
+  word. **Click a row** for the full command and its output tail
 - **Click to open** a project folder, **git branch**
 - **Phone-friendly** — the header and the card grid reflow down to a phone screen
 - **Cross-platform** — Windows, macOS, and Linux
