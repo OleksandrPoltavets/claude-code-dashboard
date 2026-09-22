@@ -635,7 +635,14 @@
     // same on every card, so it is noise, but the rest is not.
     function shortPath(cwd, home) {
       if (!cwd) return '';
-      if (home && cwd.startsWith(home)) return '~' + cwd.slice(home.length);
+      if (home && (cwd === home || cwd.startsWith(home + '/') || cwd.startsWith(home + '\\'))) {
+        return '~' + cwd.slice(home.length);
+      }
+      // The watcher only started sending its home directory recently, and the
+      // page is re-fetched on reload while the watcher keeps running. Without
+      // this an un-restarted watcher leaves every card showing a full path.
+      const m = /^(\/(?:Users|home)\/[^/]+|[A-Za-z]:\\Users\\[^\\]+)(?=[/\\]|$)/.exec(cwd);
+      if (m) return '~' + cwd.slice(m[1].length);
       return cwd;
     }
 

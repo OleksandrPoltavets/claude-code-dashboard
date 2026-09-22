@@ -35,6 +35,13 @@ Two production dependencies, `express` and `chokidar`. Keep it that way.
   ~75% of the payload before that split. Anything new that is large follows the same
   rule, and anything held per session must be excluded from the `...rest` spread in
   `GET /api/sessions`.
+- **The page and the watcher update at different times.** `public/index.html` is served
+  fresh on every reload; `watcher.js` only changes when the process is restarted, and it
+  is usually running under launchd or systemd. So a new field added to the API is absent
+  for as long as the old watcher keeps running, and the page has to look right without
+  it. `shortPath` is the worked example: the server sends `homeDir`, and the page falls
+  back to recognising `/Users/<x>` and `/home/<x>` itself so paths still read `~/...`
+  against an un-restarted watcher.
 - **Bound everything held in memory.** A watcher runs for weeks. Per-session caches all
   have a cap: `LOG_KEEP`, `TOOL_DETAIL_KEEP`, `SUBAGENT_CACHE`, `TASK_NAME_CACHE`.
   The one deliberate exception is the per-message-id usage map, which must not be
