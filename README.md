@@ -53,6 +53,47 @@ Open **http://localhost:3456**.
 Run it in its own terminal tab. Your Claude Code sessions run as normal; the dashboard
 watches them from the side.
 
+## Install With A Coding Agent
+
+If you would rather not do it by hand, paste the block below to Claude Code, Codex,
+Cursor, or any other coding agent. It installs the dashboard, starts it, checks it
+answers, and then asks you whether you want it to start at login.
+
+````
+Install the Claude Code Dashboard from https://github.com/OleksandrPoltavets/claude-code-dashboard
+
+It is a localhost Node.js web dashboard that watches the Claude Code JSONL session
+logs in ~/.claude/projects/ and shows every session's spend, tokens, context use and
+status on one page. It reads those logs and never writes to them.
+
+Do this:
+
+1. Check node --version is 18 or later. Stop and tell me if it is not.
+2. Clone the repo into ~/projects/claude-code-dashboard, or into wherever I usually
+   keep repositories on this machine. If that directory already exists, pull instead
+   of cloning, and tell me you did.
+3. Run npm install in it. It has two production dependencies, express and chokidar.
+4. Start it in the background with `npm start` and wait a few seconds.
+5. Verify it: `curl -s -o /dev/null -w "%{http_code}" localhost:3456/api/sessions`
+   must print 200. If the port is already taken, restart it with PORT=<free port>
+   and use that port everywhere after this.
+6. Tell me the URL to open.
+
+Rules:
+- Do not run anything with sudo. This is a user-level tool.
+- Do not modify, move or delete anything under ~/.claude. Read only.
+- Do not open a port to anything but localhost.
+
+Then ask me whether I want it to start automatically at login. Do not set that up
+until I say yes. If I say yes, follow the "Run It On Boot" section of the repo's
+README: a launchd agent on macOS, or a systemd user unit on Linux. Use my real home
+directory and my real node path, not the example ones. If I run the 1M context tier,
+set CONTEXT_WINDOW=1000000; otherwise leave it out. Afterwards, show me the command
+that proves it is running, and the command to undo it.
+````
+
+The agent should end with a URL for you to open, normally **http://localhost:3456**.
+
 ## Run It On Boot
 
 The dashboard is more useful when it is always there. Below is the setup running on the
