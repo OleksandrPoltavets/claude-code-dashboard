@@ -100,6 +100,13 @@ these lengths:
 | `idle` | Neither |
 | `idle-stale` | Idle, and nothing today. Applied in the API handler, not here |
 
+**Status decides whether a session is collapsed.** The newest-per-project fold in
+`GET /api/sessions` applies to `idle` sessions only; `thinking` and `waiting` always keep
+their own card. That is deliberate — one is working and the other is asking you something
+— but it means a project can legitimately show several cards, and lengthening
+`WAITING_MS` lengthens how long it does. Grouping there is keyed on the working directory,
+not the display label, because the label is a folder name and two projects can share one.
+
 **Status follows the last conversational turn, not the last event.** `lastTurnType` and
 `lastTurnContentTypes` are set only by an `assistant` event or a genuine human `user`
 turn; everything else leaves them alone. A finished turn is followed within milliseconds

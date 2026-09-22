@@ -306,8 +306,20 @@ Sessions 0/20 of 115    Output 13.4M out    Cost $2,269.13
 | `20` | Cards drawn on screen |
 | `115` | Every session found in the logs |
 
-Fewer cards than sessions is normal. Each time you open Claude Code in a project you
-start a new session, so a project accumulates many. Only the newest per project gets a card.
+Fewer cards than sessions is normal. Each time you open Claude Code in a project — and
+each `/clear`, which starts a new session file rather than continuing the old one — you
+start another session, so a project accumulates many.
+
+**The collapse only folds idle sessions.** Of those, the newest per project gets a card.
+A `thinking` or `waiting` session always keeps its own card: one of them is working and
+the other is asking you something, and folding either away would hide the thing you
+opened the dashboard for.
+
+So a project can legitimately show several cards at once. After a `/clear` you will
+usually see two for a while — the session you just left, still `waiting` because it ended
+on a question, and the one you are now in. The old one folds away on its own once it
+passes the 30-minute `waiting` window.
+
 The `newest only` / `all sessions` button in the header switches between the two views,
 and carries the count it would add — `newest only (+135)`.
 
