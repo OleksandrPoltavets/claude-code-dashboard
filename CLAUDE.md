@@ -100,6 +100,14 @@ these lengths:
 | `idle` | Neither |
 | `idle-stale` | Idle, and nothing today. Applied in the API handler, not here |
 
+**Status follows the last conversational turn, not the last event.** `lastTurnType` and
+`lastTurnContentTypes` are set only by an `assistant` event or a genuine human `user`
+turn; everything else leaves them alone. A finished turn is followed within milliseconds
+by hook output as a `system` event, and by `attachment` events and background-task
+notifications later — 10 of 38 finished turns in one sampled session. Taking the last
+event instead made `waiting` unreachable: it was never observed once on 26 live sessions
+before this was fixed.
+
 **Do not shorten these without measuring first.** An earlier version used 15s and 60s
 and had a dead zone: everything between them returned `idle`, so a session running a
 one-minute command read as idle. Measured over 4,173 consecutive-event gaps in real

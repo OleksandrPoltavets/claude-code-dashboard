@@ -303,8 +303,8 @@ function getOrCreateSession(sessionId) {
       recentLog: [],
       startedAt: null,
       lastEventAt: null,
-      lastEventType: '',
-      lastContentTypes: [],
+      lastTurnType: '',        // last conversational turn only - see processEvent
+      lastTurnContentTypes: [],
       usageByModel: {}, // model -> {in,out,w5m,w1h,read}; each model is priced at its own rate
       lastTurnInputTotal: 0, // input + cache for context window estimate
       maxInputSeen: 0, // highest lastTurnInputTotal seen, for context-tier inference
@@ -494,7 +494,6 @@ function processEvent(event, projectHash) {
 
   if (!session.startedAt) session.startedAt = ts;
   session.lastEventAt = ts;
-  session.lastEventType = event.type;
   session.projectHash = projectHash;
 
   if (event.cwd && !session.cwd) {
@@ -522,7 +521,20 @@ function processEvent(event, projectHash) {
   const contentTypes = Array.isArray(content)
     ? content.map(c => c.type)
     : (typeof content === 'string' ? ['text'] : []);
-  session.lastContentTypes = contentTypes;
+
+  // What the session is doing is decided by the last conversational turn, not
+  // by the last line in the file. A finished turn is routinely followed by
+  // machinery that carries a timestamp - hook output as a `system` event, an
+  // `attachment`, a background task's completion notification - and letting
+  // any of that stand as the turn makes a session that is waiting for you look
+  // busy instead. A tool_result is not a human turn either: it is the other
+  // half of a tool call the assistant made.
+  const isHumanTurn = event.type === 'user' && msg.role === 'user'
+    && !contentTypes.includes('tool_result');
+  if (event.type === 'assistant' || isHumanTurn) {
+    session.lastTurnType = event.type;
+    session.lastTurnContentTypes = contentTypes;
+  }
 
   if (event.type === 'assistant' && msg.usage) {
     const msgId = msg.id;
@@ -717,9 +729,9 @@ function deriveStatus(session) {
   // session is waiting for you, and stays waiting until you come back to it.
   // This is the state the desktop alert exists for, so it must not expire in
   // seconds the way a working session's silence does.
-  const turnEnded = session.lastEventType === 'assistant'
-    && session.lastContentTypes.includes('text')
-    && !session.lastContentTypes.includes('tool_use');
+  const turnEnded = session.lastTurnType === 'assistant'
+    && session.lastTurnContentTypes.includes('text')
+    && !session.lastTurnContentTypes.includes('tool_use');
   if (turnEnded) return elapsed < WAITING_MS ? 'waiting' : 'idle';
 
   // Anything else recent means work in progress - a tool call, a thinking

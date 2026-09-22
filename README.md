@@ -315,6 +315,14 @@ the usage row's `30 days` is the **last 30 days**.
 | `idle` | Neither of the above |
 | `idle-stale` | Idle, and nothing today |
 
+Status is decided by the last **conversational turn**, not by the last line in the file.
+A finished turn is routinely followed by machinery that carries a timestamp: hook output
+as a `system` event, an `attachment`, a background task's completion notification. In one
+sampled session, 10 of 38 finished turns were followed by one of those within
+milliseconds. Letting any of it stand as the turn makes a session that is waiting for you
+look busy, and then idle. A `tool_result` is not a human turn either — it is the other
+half of a tool call the assistant made.
+
 The two windows are different lengths on purpose, and neither is short.
 
 **A working session is not continuously noisy.** Measured across 4,173 consecutive-event
@@ -447,6 +455,9 @@ not know about subscription plans or quotas.
 - Header and card grid reflow for a phone screen
 - Costs read with two decimals and a thousands separator
 - Reasoning effort and output mode are shown; neither was read from the log before
+- `waiting` was unreachable in practice. Status read the last event in the file, and a
+  finished turn is followed by hook `system` events within milliseconds, so the state a
+  session sits in whenever it needs you was the one state it could never show
 - Permission mode badges covered only `bypassPermissions` and `acceptEdits`, so a session
   in `auto` or `plan` — the common cases — showed no badge at all. The dedicated
   `permission-mode` event was dropped too, because it carries no timestamp
