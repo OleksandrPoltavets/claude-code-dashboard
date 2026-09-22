@@ -32,8 +32,10 @@ see which session is active.
 - **Permission mode badge** — `AUTO`, `AUTO-EDIT`, `PLAN`, `YOLO` — and the output mode
   when it is not `normal`
 - **Alerts when a session waits for you**, three ways, so at least one always lands:
-  a yellow in-page banner naming each waiting session (click a name to jump to its
-  card), the tab-title count, and a desktop notification. The banner needs no
+  a yellow in-page banner naming each waiting session and how long it has been waiting
+  (click a name to jump to its card and clear it from the bar), the tab-title count,
+  and a desktop notification. A cleared session reappears if it goes busy and comes
+  back to waiting, so acknowledging one never loses the next one. The banner needs no
   permission and no browser chrome, which is what a kiosk or chromeless window has.
   Notifications fire once per session and re-arm when it goes busy again; the button
   reads `alerts blocked` if the browser is refusing them, rather than claiming to be on

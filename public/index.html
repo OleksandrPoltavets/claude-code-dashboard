@@ -403,6 +403,7 @@
       text-underline-offset: 2px;
     }
     .waiting-jump:hover { color: var(--yellow); }
+    .waiting-since { color: var(--text-dim); font-size: 12px; }
 
     /* On, but something outside the page is stopping it working. The word says
        so too; the colour is not carrying the meaning on its own. */
@@ -598,6 +599,16 @@
       const hrs = Math.floor(mins / 60);
       if (hrs < 24) return clock + ' (' + hrs + 'h ' + (mins % 60) + 'm)';
       return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' ' + clock;
+    }
+
+    // How long a session has been waiting, compact enough to sit inline after
+    // the name. `now` is passed so it re-renders with the page's clock tick.
+    function waitedFor(iso, now) {
+      if (!iso) return '';
+      const s = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 1000));
+      if (s < 60) return s + 's';
+      if (s < 3600) return Math.floor(s / 60) + 'm';
+      return Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm';
     }
 
     function timeAgo(iso) {
@@ -1199,9 +1210,21 @@
       // A session is 'waiting' when Claude has answered and wants you. Fire once
       // per visit, and re-arm when the session goes busy again.
       const waiting = sessions.filter(s => s.status === 'waiting');
+      // Acknowledged by clicking its name. Held until that session goes busy
+      // and comes back to waiting, so the next real event re-arms it.
+      const [dismissed, setDismissed] = useState(() => new Set());
+      const waitingShown = waiting.filter(s => !dismissed.has(s.sessionId));
       useEffect(() => {
-        document.title = waiting.length
-          ? '(' + waiting.length + ') Claude Code Dashboard'
+        const live = new Set(waiting.map(s => s.sessionId));
+        setDismissed(prev => {
+          const next = new Set([...prev].filter(id => live.has(id)));
+          return next.size === prev.size ? prev : next;
+        });
+      }, [waiting.map(s => s.sessionId).join(',')]);
+
+      useEffect(() => {
+        document.title = waitingShown.length
+          ? '(' + waitingShown.length + ') Claude Code Dashboard'
           : 'Claude Code Dashboard';
         const live = new Set(waiting.map(s => s.sessionId));
         for (const id of notified.current) {
@@ -1216,7 +1239,9 @@
             tag: s.sessionId,
           });
         }
-      }, [waiting.map(s => s.sessionId).join(','), alerts]);
+        // `dismissed` is in here so the title drops a name the moment it is
+        // acknowledged, rather than waiting for the next poll.
+      }, [waiting.map(s => s.sessionId).join(','), alerts, dismissed]);
 
       const totalCost = totals ? totals.costUSD : sessions.reduce((s, x) => s + x.costUSD, 0);
       const totalOut = totals ? totals.tokensOut : sessions.reduce((s, x) => s + x.tokensOut, 0);
@@ -1308,20 +1333,29 @@
         // In-page alert. The desktop notification needs permission and the
         // tab-title count needs a tab bar; neither survives a window with no
         // browser chrome, which is where this dashboard tends to live.
-        waiting.length > 0 ? e('div', { className: 'waiting-bar' },
+        waitingShown.length > 0 ? e('div', { className: 'waiting-bar' },
           e('span', { className: 'waiting-count' },
-            waiting.length + (waiting.length === 1 ? ' session is' : ' sessions are') + ' waiting for you'),
+            waitingShown.length + (waitingShown.length === 1 ? ' session is' : ' sessions are')
+            + ' waiting for you'),
           e('span', { className: 'waiting-names' },
-            waiting.map((s, i) => e(React.Fragment, { key: s.sessionId },
+            waitingShown.map((s, i) => e(React.Fragment, { key: s.sessionId },
               i > 0 ? e('span', { className: 'waiting-sep' }, ' · ') : null,
               e('button', {
                 className: 'waiting-jump',
+                // Going to look at it counts as acknowledging it. The session
+                // is still waiting; this only stops the bar repeating itself.
                 onClick: () => {
                   const el = document.getElementById('card-' + s.sessionId);
                   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  setDismissed(prev => new Set(prev).add(s.sessionId));
                 },
-                title: 'Scroll to this session',
-              }, s.label || s.sessionId.substring(0, 8))
+                title: 'Go to this session and clear it from here. It stays waiting until you answer it.',
+              }, s.label || s.sessionId.substring(0, 8)),
+              // How long it has been waiting, from the turn that ended.
+              e('span', {
+                className: 'waiting-since',
+                title: s.lastEventAt ? 'Waiting since ' + formatTime(s.lastEventAt) : '',
+              }, ' ' + waitedFor(s.lastEventAt, now))
             ))
           )
         ) : null,
