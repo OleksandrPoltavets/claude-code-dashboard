@@ -36,6 +36,7 @@ see which session is active.
 - **Recently touched files**, per session
 - **Expandable log feed**, fetched on demand
 - **Click to open** a project folder, **git branch**, **permission mode badges**
+- **Phone-friendly** — the header and the card grid reflow down to a phone screen
 - **Cross-platform** — Windows, macOS, and Linux
 
 ## Quick Start
@@ -51,6 +52,110 @@ Open **http://localhost:3456**.
 
 Run it in its own terminal tab. Your Claude Code sessions run as normal; the dashboard
 watches them from the side.
+
+## Run It On Boot
+
+The dashboard is more useful when it is always there. Below is the setup running on the
+author's Mac: a `launchd` agent that starts the watcher at login, restarts it if it dies,
+and writes its output to `logs/`.
+
+### macOS (`launchd`)
+
+Write `~/Library/LaunchAgents/com.sancho.claude-code-dashboard.plist`. Replace the
+`sancho` in the label and in every path with your own user, and check that
+`/opt/homebrew/bin/node` is where your Node lives (`which node`).
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.sancho.claude-code-dashboard</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/opt/homebrew/bin/node</string>
+		<string>/Users/sancho/projects/claude-code-dashboard/watcher.js</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/sancho/projects/claude-code-dashboard</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PORT</key>
+		<string>3456</string>
+		<key>CONTEXT_WINDOW</key>
+		<string>1000000</string>
+	</dict>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ThrottleInterval</key>
+	<integer>10</integer>
+	<key>StandardOutPath</key>
+	<string>/Users/sancho/projects/claude-code-dashboard/logs/dashboard.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/sancho/projects/claude-code-dashboard/logs/dashboard.error.log</string>
+</dict>
+</plist>
+```
+
+`RunAtLoad` starts it at login. `KeepAlive` restarts it whenever it exits, and
+`ThrottleInterval` holds the restart to once every 10 seconds so a crash cannot spin into
+a loop. `CONTEXT_WINDOW` is 1M here because the author runs the 1M context tier; drop it
+if you do not.
+
+Create the log directory, then register the agent:
+
+```bash
+mkdir -p ~/projects/claude-code-dashboard/logs
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.sancho.claude-code-dashboard.plist
+```
+
+Check it is up, and read its output:
+
+```bash
+launchctl list | grep claude-code-dashboard   # first column is the pid
+curl -s localhost:3456/api/sessions | head -c 200
+tail -f ~/projects/claude-code-dashboard/logs/dashboard.log
+```
+
+After editing the plist, or after pulling new code, restart it:
+
+```bash
+launchctl bootout gui/$(id -u)/com.sancho.claude-code-dashboard
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.sancho.claude-code-dashboard.plist
+```
+
+To stop it starting at login, boot it out and delete the plist. `logs/` is in
+`.gitignore`, so nothing the agent writes is committed.
+
+### Linux (`systemd --user`)
+
+The same shape, as a user unit in `~/.config/systemd/user/claude-code-dashboard.service`:
+
+```ini
+[Unit]
+Description=Claude Code Dashboard
+
+[Service]
+ExecStart=/usr/bin/node %h/projects/claude-code-dashboard/watcher.js
+WorkingDirectory=%h/projects/claude-code-dashboard
+Environment=PORT=3456
+Environment=CONTEXT_WINDOW=1000000
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+```
+
+```bash
+systemctl --user enable --now claude-code-dashboard
+systemctl --user status claude-code-dashboard
+journalctl --user -u claude-code-dashboard -f
+loginctl enable-linger "$USER"   # keeps it running while you are logged out
+```
 
 ## Configuration
 
@@ -208,6 +313,9 @@ not know about subscription plans or quotas.
 - Raised text contrast; stale cards keep their fade but clear on hover
 - Subagent rows survive the agent finishing, labelled `run` / `done` by word and by colour,
   and open to the agent's full report; step feed collapsed unless the agent is still running
+- Subagent and background-task lists fold away, and open themselves while one is running
+- Header and card grid reflow for a phone screen
+- Costs read with two decimals and a thousands separator
 
 **Subagents**
 
