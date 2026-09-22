@@ -880,7 +880,11 @@
           )
         ),
 
-        // Meta grid
+        // Meta grid. Two columns filled row by row, so the order here is
+        // Model / Cost, Effort / Output, Turns / Cache Read, Started / Last
+        // Event: effort sits directly under the model it belongs to, and the
+        // left column stays what the session is while the right stays what it
+        // has used.
         e('div', { className: 'card-meta' },
           e('div', { className: 'meta-item' },
             e('span', { className: 'meta-key' }, 'Model'),
@@ -891,33 +895,32 @@
             e('span', { className: 'meta-val cost' }, formatCost(session.costUSD))
           ),
           e('div', { className: 'meta-item' },
-            e('span', { className: 'meta-key' }, 'Output'),
-            e('span', { className: 'meta-val' }, formatNumber(session.tokensOut))
+            e('span', { className: 'meta-key' }, 'Effort'),
+            e('span', {
+              className: 'meta-val effort ' + (session.effort || ''),
+              title: 'Reasoning effort',
+            }, session.effort || '-')
           ),
           e('div', { className: 'meta-item' },
-            e('span', { className: 'meta-key' }, 'Cache Read'),
-            e('span', { className: 'meta-val' }, formatNumber(session.cacheReadIn || 0))
+            e('span', { className: 'meta-key' }, 'Output'),
+            e('span', { className: 'meta-val' }, formatNumber(session.tokensOut))
           ),
           e('div', { className: 'meta-item' },
             e('span', { className: 'meta-key' }, 'Turns'),
             e('span', { className: 'meta-val' }, session.turnCount)
           ),
           e('div', { className: 'meta-item' },
-            e('span', { className: 'meta-key' }, 'Last Event'),
-            e('span', { className: 'meta-val' }, timeAgo(session.lastEventAt))
+            e('span', { className: 'meta-key' }, 'Cache Read'),
+            e('span', { className: 'meta-val' }, formatNumber(session.cacheReadIn || 0))
           ),
           e('div', { className: 'meta-item' },
             e('span', { className: 'meta-key' }, 'Started'),
             e('span', { className: 'meta-val', title: session.startedAt || '' },
               startedLabel(session.startedAt))
           ),
-          // Fills the cell the odd row count used to leave empty.
           e('div', { className: 'meta-item' },
-            e('span', { className: 'meta-key' }, 'Effort'),
-            e('span', {
-              className: 'meta-val effort ' + (session.effort || ''),
-              title: 'Reasoning effort',
-            }, session.effort || '-')
+            e('span', { className: 'meta-key' }, 'Last Event'),
+            e('span', { className: 'meta-val' }, timeAgo(session.lastEventAt))
           )
         ),
 
