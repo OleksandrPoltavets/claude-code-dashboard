@@ -95,7 +95,9 @@ Code changes.
 - **Closing a session writes nothing to its log.** A running Claude Code keeps
   `~/.claude/sessions/<pid>.json` (`pid`, `sessionId`, `cwd`) and deletes it on exit;
   `isClosed` uses that to drop `waiting` at once. An SDK process writes logs under
-  session ids other than the one in its file, so a live `cwd` also counts as open.
+  session ids other than the one in its file, so a live SDK process's `cwd` also counts
+  as open (`entrypoint` starts with `sdk`). Only SDK: a new interactive session in the
+  same folder would otherwise keep every closed one there `waiting`.
 - **Tool output carries terminal colour escapes**, which reach the feed as literal
   `[90m` noise unless stripped.
 

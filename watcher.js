@@ -725,8 +725,9 @@ function processEvent(event, projectHash) {
 // exit. Closing a session writes nothing to its log, so this is the only way
 // to tell a closed session from one still waiting for you. Undocumented: when
 // the folder is missing this returns null and status falls back to the log.
-// A session counts as open if a live process has its id or its folder, since
-// an SDK process writes logs under ids other than the one in its file.
+// A session counts as open if a live process has its id, or a live SDK process
+// has its folder, since an SDK process writes logs under ids other than the one
+// in its file.
 const LIVE_DIR = path.join(os.homedir(), '.claude', 'sessions');
 let liveCache = { at: 0, value: null };
 
@@ -741,7 +742,10 @@ function liveProcesses() {
         const d = JSON.parse(fs.readFileSync(path.join(LIVE_DIR, name), 'utf8'));
         process.kill(d.pid, 0); // throws when the process is gone
         value.ids.add(d.sessionId);
-        value.cwds.add(d.cwd);
+        // Only an SDK process needs the folder match. Counting every live
+        // process's folder kept a closed session open while a new one ran
+        // in the same project.
+        if (String(d.entrypoint).startsWith('sdk')) value.cwds.add(d.cwd);
       } catch {}
     }
   } catch {
