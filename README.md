@@ -51,6 +51,9 @@ see which session is active.
   A success is a dim `→` carrying the first line of output; a failure is a red `err`
   with the exit code, so failures are the only thing in that column that reads as a
   word. **Click a row** for the full command and its output tail
+- **Session title** — the short title Claude Code gives each session, or the name you
+  set with `/rename`, which wins. Two sessions open in the same folder share a project
+  name, so the title is what tells them apart
 - **Project name, path and branch** — the name is the folder alone, since the path above
   it repeats on every card. The full path is a labelled row beneath it, shortened to
   `~/projects/x`, so a nested project still shows what it sits under. The filter box
@@ -337,10 +340,9 @@ A `thinking` or `waiting` session always keeps its own card: one of them is work
 the other is asking you something, and folding either away would hide the thing you
 opened the dashboard for.
 
-So a project can legitimately show several cards at once. After a `/clear` you will
-usually see two for a while — the session you just left, still `waiting` because it ended
-on a question, and the one you are now in. The old one folds away on its own once it
-passes the 30-minute `waiting` window.
+So a project can legitimately show several cards at once, for example two sessions open
+in the same folder. The `Title:` row on each card tells them apart. A session you closed
+drops to `idle` and folds away.
 
 The `newest only` / `all sessions` button in the header switches between the two views,
 and carries the count it would add — `newest only (+135)`.

@@ -20,6 +20,7 @@ const SESSIONS = [
   {
     sessionId: 'demo-0000-0000-0000-000000000001',
     label: 'checkout-api',
+    aiTitle: 'Retry failed payment webhooks',
     cwd: '/home/dev/acme/checkout-api',
     gitBranch: 'feat/idempotent-refunds',
     permissionMode: 'acceptEdits',
@@ -79,6 +80,7 @@ const SESSIONS = [
   {
     sessionId: 'demo-0000-0000-0000-000000000002',
     label: 'web-storefront',
+    aiTitle: 'Fix cart total rounding',
     cwd: '/home/dev/acme/web-storefront',
     gitBranch: 'main',
     permissionMode: 'auto',
@@ -113,6 +115,7 @@ const SESSIONS = [
   {
     sessionId: 'demo-0000-0000-0000-000000000003',
     label: 'infra-terraform',
+    customTitle: 'staging db migration',
     cwd: '/home/dev/acme/infra-terraform',
     gitBranch: 'chore/pin-provider-versions',
     permissionMode: 'plan',

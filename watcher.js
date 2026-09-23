@@ -311,6 +311,8 @@ function getOrCreateSession(sessionId) {
       permissionMode: '',
       effort: '', // reasoning effort, from the assistant event: low | medium | high
       mode: '', // output mode, from its own `mode` event
+      aiTitle: '',     // title Claude Code gives the session
+      customTitle: '', // title set with /rename; wins over aiTitle
       version: '',
       subagents: {}, // agentId -> see the subagent block in processEvent
       taskNames: {}, // background task id -> human name, see noteTaskNotification
@@ -485,6 +487,13 @@ function processEvent(event, projectHash) {
     const s = getOrCreateSession(event.sessionId);
     if (event.mode) s.mode = event.mode;
     if (event.permissionMode) s.permissionMode = event.permissionMode;
+    return;
+  }
+  // Titles also carry no timestamp. They tell apart two sessions in one folder.
+  if (event.type === 'ai-title' || event.type === 'custom-title') {
+    const s = getOrCreateSession(event.sessionId);
+    if (event.aiTitle) s.aiTitle = event.aiTitle;
+    if (event.customTitle) s.customTitle = event.customTitle;
     return;
   }
 

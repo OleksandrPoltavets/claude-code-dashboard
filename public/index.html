@@ -928,6 +928,7 @@
         return () => { alive = false; clearInterval(iv); };
       }, [expanded, session.sessionId]);
       const st = session.status;
+      const title = session.customTitle || session.aiTitle || '';
       const pct = contextPercent(session.lastTurnInputTotal || session.tokensIn, session.contextLimit);
 
       return e('div', { className: 'card status-' + st, id: 'card-' + session.sessionId },
@@ -969,7 +970,11 @@
         // label is only the folder name, so without this the path lived solely
         // in a tooltip - no use on a phone, and nobody hovers to find out where
         // a project is.
-        (session.cwd || session.gitBranch) ? e('div', { className: 'card-sub' },
+        (title || session.cwd || session.gitBranch) ? e('div', { className: 'card-sub' },
+          title ? e('div', { className: 'sub-row' },
+            e('span', { className: 'sub-key' }, 'Title:'),
+            e('span', { className: 'sub-val', title, style: { wordBreak: 'normal' } }, title)
+          ) : null,
           session.cwd ? e('div', { className: 'sub-row' },
             e('span', { className: 'sub-key' }, 'Path:'),
             e('span', { className: 'sub-val', title: session.cwd }, shortPath(session.cwd, homeDir))
