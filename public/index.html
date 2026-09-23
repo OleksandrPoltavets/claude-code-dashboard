@@ -1346,7 +1346,7 @@
             staleCount > 0 && e('button', {
               className: 'stale-toggle' + (hideStale ? ' on' : ''),
               onClick: toggleStale,
-              title: 'Sessions with no activity today'
+              title: 'Sessions you closed, or with no activity today'
             }, (hideStale ? 'show' : 'hide') + ' stale (' + staleCount + ')'),
             (() => {
               const hidden = (totals && totals.hiddenCount) || 0;

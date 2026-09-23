@@ -953,9 +953,11 @@ app.get('/api/sessions', (req, res) => {
   // Sort: active today first (alphabetical), then inactive today (alphabetical)
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
-  // Mark idle sessions not active today as 'idle-stale'
+  // Mark idle sessions not active today as 'idle-stale', and closed ones too:
+  // a session you quit this morning is not something to keep a card open for.
+  const isStale = s => !s.lastEventAt || new Date(s.lastEventAt) < todayStart || isClosed(s);
   for (const s of result) {
-    if (s.status === 'idle' && (!s.lastEventAt || new Date(s.lastEventAt) < todayStart)) {
+    if (s.status === 'idle' && isStale(s)) {
       s.status = 'idle-stale';
     }
   }
@@ -990,7 +992,7 @@ app.get('/api/sessions', (req, res) => {
     for (const s of all) {
       if (shown.has(s.sessionId)) continue;
       hiddenCount++;
-      if (s.status === 'idle' && (!s.lastEventAt || new Date(s.lastEventAt) < todayStart)) {
+      if (s.status === 'idle' && isStale(s)) {
         hiddenStaleCount++;
       }
     }

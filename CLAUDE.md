@@ -111,7 +111,7 @@ these lengths:
 | `waiting` | Last turn ended in text with **no** tool call. Holds `WAITING_MS` (30 min) |
 | `thinking` | Anything else within `THINKING_MS` (2 min) |
 | `idle` | Neither |
-| `idle-stale` | Idle, and nothing today. Applied in the API handler, not here |
+| `idle-stale` | Idle, and closed or nothing today. Applied in the API handler, not here |
 
 **Status decides whether a session is collapsed.** The newest-per-project fold in
 `GET /api/sessions` applies to `idle` sessions only; `thinking` and `waiting` always keep

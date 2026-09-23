@@ -363,7 +363,7 @@ the usage row's `30 days` is the **last 30 days**.
 | `waiting` | The last turn ended in text with no tool call — it asked you something, or it finished and is waiting. Holds for 30 minutes, or until the session is closed |
 | `thinking` | Anything else within the last 2 minutes — a tool call, a thinking block, input you just sent |
 | `idle` | Neither of the above |
-| `idle-stale` | Idle, and nothing today |
+| `idle-stale` | Idle, and closed or nothing today |
 
 Status is decided by the last **conversational turn**, not by the last line in the file.
 A finished turn is routinely followed by machinery that carries a timestamp: hook output
