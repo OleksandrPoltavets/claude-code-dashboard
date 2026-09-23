@@ -389,10 +389,11 @@ on, so a short window would mean the alert almost never arrives.
 log, so the log alone cannot tell a closed session from one still waiting for you. A
 running Claude Code keeps a small file in `~/.claude/sessions/` naming its process id,
 session id and folder, and deletes it on exit. A `waiting` session drops to `idle` when
-no live process names its session id. A live SDK process also keeps open every session
+no live process names its session id. A live SDK process also keeps open every SDK session
 in its folder, because it writes logs under session ids other than the one in its file.
+It does not keep open a CLI session in that folder.
 
-Two limits. A closed session whose folder has a live SDK process keeps waiting out the
+Two limits. A closed SDK session whose folder has another live SDK process keeps waiting out the
 30 minutes, as before. And the file is undocumented and checked on macOS only: where `~/.claude/sessions/` does not exist, status falls back to the log alone.
 
 ## Alerts

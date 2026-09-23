@@ -97,7 +97,10 @@ Code changes.
   `isClosed` uses that to drop `waiting` at once. An SDK process writes logs under
   session ids other than the one in its file, so a live SDK process's `cwd` also counts
   as open (`entrypoint` starts with `sdk`). Only SDK: a new interactive session in the
-  same folder would otherwise keep every closed one there `waiting`.
+  same folder would otherwise keep every closed one there `waiting`. The folder match
+  applies only to a session whose own log says `entrypoint: sdk-*`: an IDE's ACP agent
+  (RubyMine's `claude-agent-acp`) can outlive the IDE by weeks, and it kept every CLI
+  session in its folder `waiting`.
 - **Tool output carries terminal colour escapes**, which reach the feed as literal
   `[90m` noise unless stripped.
 

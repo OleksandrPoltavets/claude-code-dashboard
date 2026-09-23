@@ -292,6 +292,7 @@ function getOrCreateSession(sessionId) {
       label: '',
       model: '',
       gitBranch: '',
+      entrypoint: '',
       status: 'idle',
       tokensIn: 0,
       tokensOut: 0,
@@ -518,6 +519,7 @@ function processEvent(event, projectHash) {
     session.gitBranch = event.gitBranch;
   }
   if (event.version) session.version = event.version;
+  if (event.entrypoint) session.entrypoint = event.entrypoint;
   if (event.permissionMode) session.permissionMode = event.permissionMode;
   // Reasoning effort rides on every assistant event. perTurnEffort is an
   // override for one turn and is null unless it was actually set, so the
@@ -766,7 +768,11 @@ function liveProcesses() {
 
 function isClosed(session) {
   const live = liveProcesses();
-  return !!live && !live.ids.has(session.sessionId) && !live.cwds.has(session.cwd);
+  if (!live || live.ids.has(session.sessionId)) return false;
+  // The folder match is for SDK logs only. A CLI session has its own pid file,
+  // and an SDK host left running for weeks would otherwise keep every CLI
+  // session in its folder open.
+  return !(session.entrypoint.startsWith('sdk') && live.cwds.has(session.cwd));
 }
 
 function deriveStatus(session) {
