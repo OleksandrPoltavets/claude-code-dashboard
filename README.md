@@ -27,7 +27,7 @@ see which session is active.
 - **Cost tracking** — per-model rates, with cache writes billed by TTL and cache reads at 0.1x
 - **Context window bar** — per session, sized to that session's actual limit
 - **Status detection** — thinking (green), waiting (yellow), idle (orange), stale (dimmed).
-  See [How status is decided](#how-status-is-decided)
+  A session you closed stops waiting at once. See [How status is decided](#how-status-is-decided)
 - **Session start time** — clock time plus elapsed, per card
 - **Reasoning effort** — `low` / `medium` / `high`, beside the model
 - **Permission mode badge** — `AUTO`, `AUTO-EDIT`, `PLAN`, `YOLO` — and the output mode
@@ -197,7 +197,13 @@ curl -s localhost:3456/api/sessions | head -c 200
 tail -f "$DASH/logs/dashboard.log"
 ```
 
-After editing the plist, or after pulling new code, restart it:
+After pulling new code, restart it:
+
+```bash
+launchctl kickstart -k gui/$(id -u)/local.claude-code-dashboard
+```
+
+After editing the plist, reload it, since `kickstart` keeps the copy launchd already read:
 
 ```bash
 launchctl bootout gui/$(id -u)/local.claude-code-dashboard
@@ -234,6 +240,13 @@ journalctl --user -u claude-code-dashboard -f
 loginctl enable-linger "$USER"   # keeps it running while you are logged out
 ```
 
+After pulling new code, or after editing the unit (run `systemctl --user daemon-reload`
+first for that):
+
+```bash
+systemctl --user restart claude-code-dashboard
+```
+
 ### Windows (Task Scheduler)
 
 A logon task, created from an ordinary Command Prompt. Replace the paths with your own;
@@ -258,6 +271,13 @@ Check it, run it now without waiting for a logon, and remove it again:
 schtasks /query /tn "Claude Code Dashboard"
 schtasks /run   /tn "Claude Code Dashboard"
 schtasks /delete /tn "Claude Code Dashboard" /f
+```
+
+After pulling new code, stop it and start it again:
+
+```bat
+schtasks /end /tn "Claude Code Dashboard"
+schtasks /run /tn "Claude Code Dashboard"
 ```
 
 The task runs with no console window. Unlike `launchd` and `systemd`, Task Scheduler
@@ -338,7 +358,7 @@ the usage row's `30 days` is the **last 30 days**.
 
 | Status | When |
 | --- | --- |
-| `waiting` | The last turn ended in text with no tool call — it asked you something, or it finished and is waiting. Holds for 30 minutes |
+| `waiting` | The last turn ended in text with no tool call — it asked you something, or it finished and is waiting. Holds for 30 minutes, or until the session is closed |
 | `thinking` | Anything else within the last 2 minutes — a tool call, a thinking block, input you just sent |
 | `idle` | Neither of the above |
 | `idle-stale` | Idle, and nothing today |
@@ -362,6 +382,17 @@ a busy session as idle.
 minutes ago is still waiting. It expires after 30 minutes only so that yesterday's
 finished sessions do not all sit there yellow. This is the status the desktop alert fires
 on, so a short window would mean the alert almost never arrives.
+
+**A closed session stops waiting at once.** Closing Claude Code writes nothing to the
+log, so the log alone cannot tell a closed session from one still waiting for you. A
+running Claude Code keeps a small file in `~/.claude/sessions/` naming its process id,
+session id and folder, and deletes it on exit. A `waiting` session drops to `idle` when
+no live process names its session id or its folder. The folder counts because an SDK
+process writes logs under session ids other than the one in its file.
+
+Two limits. A closed session whose folder has another session still open keeps waiting
+out the 30 minutes, as before. And the file is undocumented and checked on macOS only:
+where `~/.claude/sessions/` does not exist, status falls back to the log alone.
 
 ## Alerts
 
@@ -478,8 +509,10 @@ session.
 `createReadStream(file, { start: offset })`, so appending a line reads that line — not
 the file. The largest session file in the sample was 26 MB and is never re-read.
 
-**It is idle between changes.** No polling of the filesystem; `chokidar` is event-driven,
-which is why steady CPU is ~0.
+**It is idle between changes.** No polling of the session logs; `chokidar` is
+event-driven, which is why steady CPU is ~0. The one exception is `~/.claude/sessions/`,
+a handful of small files read at most once a second while a page is open, to tell a
+closed session from a waiting one.
 
 ### On a small machine
 

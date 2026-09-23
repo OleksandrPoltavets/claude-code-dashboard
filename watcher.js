@@ -721,6 +721,41 @@ function processEvent(event, projectHash) {
   }
 }
 
+// A running Claude Code writes ~/.claude/sessions/<pid>.json and deletes it on
+// exit. Closing a session writes nothing to its log, so this is the only way
+// to tell a closed session from one still waiting for you. Undocumented: when
+// the folder is missing this returns null and status falls back to the log.
+// A session counts as open if a live process has its id or its folder, since
+// an SDK process writes logs under ids other than the one in its file.
+const LIVE_DIR = path.join(os.homedir(), '.claude', 'sessions');
+let liveCache = { at: 0, value: null };
+
+function liveProcesses() {
+  if (Date.now() - liveCache.at < 1000) return liveCache.value;
+  let value = null;
+  try {
+    value = { ids: new Set(), cwds: new Set() };
+    for (const name of fs.readdirSync(LIVE_DIR)) {
+      if (!name.endsWith('.json')) continue;
+      try {
+        const d = JSON.parse(fs.readFileSync(path.join(LIVE_DIR, name), 'utf8'));
+        process.kill(d.pid, 0); // throws when the process is gone
+        value.ids.add(d.sessionId);
+        value.cwds.add(d.cwd);
+      } catch {}
+    }
+  } catch {
+    value = null;
+  }
+  liveCache = { at: Date.now(), value };
+  return value;
+}
+
+function isClosed(session) {
+  const live = liveProcesses();
+  return !!live && !live.ids.has(session.sessionId) && !live.cwds.has(session.cwd);
+}
+
 function deriveStatus(session) {
   if (!session.lastEventAt) return 'idle';
   const elapsed = Date.now() - new Date(session.lastEventAt).getTime();
@@ -736,7 +771,7 @@ function deriveStatus(session) {
   const turnEnded = session.lastTurnType === 'assistant'
     && session.lastTurnContentTypes.includes('text')
     && !session.lastTurnContentTypes.includes('tool_use');
-  if (turnEnded) return elapsed < WAITING_MS ? 'waiting' : 'idle';
+  if (turnEnded) return elapsed < WAITING_MS && !isClosed(session) ? 'waiting' : 'idle';
 
   // Anything else recent means work in progress - a tool call, a thinking
   // block, or input you just sent.

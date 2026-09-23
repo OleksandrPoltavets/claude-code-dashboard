@@ -92,6 +92,10 @@ Code changes.
 - **`attachment.identity.modelId` spells the context tier** (`claude-opus-5[1m]`). Rare
   — 10 occurrences in a 10-session sample — so the tier inference still stands, but this
   would be the direct signal if it turns out to be reliable.
+- **Closing a session writes nothing to its log.** A running Claude Code keeps
+  `~/.claude/sessions/<pid>.json` (`pid`, `sessionId`, `cwd`) and deletes it on exit;
+  `isClosed` uses that to drop `waiting` at once. An SDK process writes logs under
+  session ids other than the one in its file, so a live `cwd` also counts as open.
 - **Tool output carries terminal colour escapes**, which reach the feed as literal
   `[90m` noise unless stripped.
 
