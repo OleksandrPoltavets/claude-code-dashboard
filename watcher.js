@@ -172,8 +172,12 @@ function recomputeCost(session) {
   session.costUSD = total;
 }
 
-// Done once it gave its final reply, or its finish notification arrived.
+// Done once it gave its final reply, or its finish notification arrived. An
+// agent that started background work ends its turn and sleeps until that work
+// reports back, and it has sent its finish notification by then, so pending
+// work outranks both.
 function deriveSubagentStatus(sub, session) {
+  if (sub.pendingTasks && sub.pendingTasks.length) return isClosed(session) ? 'done' : 'thinking';
   if (sub.ended || session.taskNames[sub.agentId]) return 'done';
   const last = sub.lastEventAt ? new Date(sub.lastEventAt).getTime() : 0;
   return Date.now() - last < SUBAGENT_ACTIVE_MS && !isClosed(session) ? 'thinking' : 'done';
@@ -232,7 +236,12 @@ function setTaskName(session, taskId, name) {
 function noteTaskNotification(session, text) {
   const id = text.match(/<task-id>([A-Za-z0-9_-]+)<\/task-id>/);
   const summary = text.match(/<summary>([\s\S]*?)<\/summary>/);
-  if (!id || !summary) return;
+  if (!id) return;
+  // The work a subagent left running in the background has reported back.
+  for (const sub of Object.values(session.subagents)) {
+    if (sub.pendingTasks) sub.pendingTasks = sub.pendingTasks.filter(t => t !== id[1]);
+  }
+  if (!summary) return;
   const quoted = summary[1].match(/"([^"]+)"/);
   setTaskName(session, id[1], (quoted ? quoted[1] : summary[1]).trim().substring(0, 120));
 }
@@ -679,6 +688,7 @@ function processEvent(event, projectHash, filePath) {
         startedAt: ts,
         lastEventAt: null,
         ended: false,
+        pendingTasks: [], // background work it started that has not reported back
         description: readSubagentDescription(filePath),
       };
     }
@@ -691,6 +701,15 @@ function processEvent(event, projectHash, filePath) {
     // does. Any later turn, such as a message sent to the agent, reopens it.
     if (event.type === 'assistant' || event.type === 'user') {
       sub.ended = event.type === 'assistant' && !!msg.stop_reason && msg.stop_reason !== 'tool_use';
+    }
+    // A background Bash leaves backgroundTaskId, a background Agent isAsync and
+    // agentId. Either one reports back in a notification naming it as task-id,
+    // which lands in the main log as a queue-operation. A task already named has
+    // reported, since the main log may be read before this transcript.
+    const tur = event.toolUseResult;
+    const startedId = tur && (tur.backgroundTaskId || (tur.isAsync && tur.agentId));
+    if (startedId && !session.taskNames[startedId] && !sub.pendingTasks.includes(startedId)) {
+      sub.pendingTasks.push(startedId);
     }
 
     // Count the tools it ran. The closing report is read from the transcript

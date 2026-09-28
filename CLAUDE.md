@@ -85,6 +85,13 @@ Code changes.
   signal: a subagent running a test loop wrote nothing for 77s, and the old 15-second
   window showed it `done` while it worked. The 10-minute window now only catches an
   agent killed before its final reply.
+- **A subagent can end its turn and still be working.** It starts a background Bash or
+  Agent, ends its turn with `end_turn`, and its finish notification reaches the parent
+  at once. It wakes when the work reports back. The start is on its `toolUseResult`:
+  `backgroundTaskId` for Bash (also when a Bash times out and is moved to the
+  background), `isAsync` + `agentId` for an Agent. The report is a `queue-operation`
+  in the **main** log naming it as `<task-id>`, not reliably in the subagent's own
+  log. Pending work outranks `end_turn` and the finish notification.
 - **`tool_result.content` is a string on most tools and an array of blocks on some.**
 - **Reasoning effort is `effort` on every assistant event** (`low`/`medium`/`high`).
   `perTurnEffort` sits beside it as a single-turn override and is `null` unless set, so
