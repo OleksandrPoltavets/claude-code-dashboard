@@ -177,6 +177,8 @@
       cursor: pointer;
     }
     .subagents-header:hover { color: var(--text); }
+    .subagents-live { color: var(--green); }
+    .subagents-live .subagent-dot { display: inline-block; margin: 0 4px 0 2px; vertical-align: middle; }
     .subagent {
       display: flex;
       align-items: center;
@@ -904,6 +906,13 @@
       );
     }
 
+    // A folded list still says how much of it is running, as a word and a dot.
+    function liveCount(n) {
+      if (!n) return null;
+      return e('span', { className: 'subagents-live' },
+        ' \u00b7 ', e('span', { className: 'subagent-dot running' }), n + ' run');
+    }
+
     function SessionCard({ session, homeDir }) {
       const [expanded, setExpanded] = useState(false);
       const [log, setLog] = useState([]);
@@ -1056,7 +1065,8 @@
               e('button', {
                 className: 'subagents-header',
                 onClick: () => setSubsOpen(!subsOpen)
-              }, (subsOpen ? '- ' : '+ ') + 'Subagents (' + session.subagents.length + ')'),
+              }, (subsOpen ? '- ' : '+ ') + 'Subagents (' + session.subagents.length + ')',
+                subsOpen ? null : liveCount(session.subagents.filter(s => s.status === 'thinking').length)),
               subsOpen
                 ? session.subagents.map(sub =>
                     e(SubagentRow, { key: sub.agentId, sessionId: session.sessionId, sub })
@@ -1071,7 +1081,8 @@
               e('button', {
                 className: 'subagents-header',
                 onClick: () => setTasksOpen(!tasksOpen)
-              }, (tasksOpen ? '- ' : '+ ') + 'Background tasks (' + session.backgroundTasks.length + ')'),
+              }, (tasksOpen ? '- ' : '+ ') + 'Background tasks (' + session.backgroundTasks.length + ')',
+                tasksOpen ? null : liveCount(session.backgroundTasks.filter(t => t.status === 'running' || t.status === 'quiet').length)),
               tasksOpen
                 ? session.backgroundTasks.map(task =>
                     e(TaskRow, { key: task.taskId, sessionId: session.sessionId, task })
