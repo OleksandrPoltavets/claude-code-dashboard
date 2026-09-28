@@ -92,8 +92,11 @@ function costOfDelta(d, p) {
 // It is released when the session is archived.
 // Subagent records kept per session, newest first.
 const SUBAGENT_CACHE = 50;
-// A subagent counts as running while it wrote within this window.
-const SUBAGENT_ACTIVE_MS = 15_000;
+// A subagent that has not given its final reply counts as running while it wrote
+// within this window. It is long because a tool call writes nothing while it
+// runs: a test loop left 77s gaps, and a Bash call may run 10 minutes. The
+// window only matters for an agent killed before its final reply.
+const SUBAGENT_ACTIVE_MS = 10 * 60_000;
 // Directory Claude Code writes subagent transcripts into, beside the session file.
 const SUBAGENT_DIR = 'subagents';
 // Steps returned for one subagent transcript, newest kept.
@@ -169,9 +172,23 @@ function recomputeCost(session) {
   session.costUSD = total;
 }
 
-function deriveSubagentStatus(sub) {
+// Done once it gave its final reply, or its finish notification arrived.
+function deriveSubagentStatus(sub, session) {
+  if (sub.ended || session.taskNames[sub.agentId]) return 'done';
   const last = sub.lastEventAt ? new Date(sub.lastEventAt).getTime() : 0;
-  return Date.now() - last < SUBAGENT_ACTIVE_MS ? 'thinking' : 'done';
+  return Date.now() - last < SUBAGENT_ACTIVE_MS && !isClosed(session) ? 'thinking' : 'done';
+}
+
+// Claude Code writes agent-<id>.meta.json beside the transcript when it launches
+// the agent. Its description names the agent before the finish notification does.
+function readSubagentDescription(filePath) {
+  if (!filePath || path.basename(path.dirname(filePath)) !== SUBAGENT_DIR) return '';
+  try {
+    const meta = JSON.parse(fs.readFileSync(filePath.replace(/\.jsonl$/, '.meta.json'), 'utf8'));
+    return typeof meta.description === 'string' ? meta.description.substring(0, 120) : '';
+  } catch {
+    return '';
+  }
 }
 
 // Cached per session so a 2s poll does not stat the same files every time.
@@ -468,7 +485,7 @@ function extractActiveFiles(content) {
   return files;
 }
 
-function processEvent(event, projectHash) {
+function processEvent(event, projectHash, filePath) {
   if (!event || !event.sessionId) return;
   // A queue-operation carries nothing else worth keeping, but the notification
   // in it is the only place an agent-started task's name appears.
@@ -661,6 +678,8 @@ function processEvent(event, projectHash) {
         toolCount: 0,
         startedAt: ts,
         lastEventAt: null,
+        ended: false,
+        description: readSubagentDescription(filePath),
       };
     }
     const sub = session.subagents[aid];
@@ -668,6 +687,11 @@ function processEvent(event, projectHash) {
 
     if (event.attributionAgent && !sub.agentType) sub.agentType = event.attributionAgent;
     if (msg.model) sub.model = msg.model;
+    // Streamed parts of a reply carry no stop_reason; only the finished reply
+    // does. Any later turn, such as a message sent to the agent, reopens it.
+    if (event.type === 'assistant' || event.type === 'user') {
+      sub.ended = event.type === 'assistant' && !!msg.stop_reason && msg.stop_reason !== 'tool_use';
+    }
 
     // Count the tools it ran. The closing report is read from the transcript
     // on demand, so it is not held here.
@@ -852,7 +876,7 @@ function processFile(filePath) {
       buffer = buffer.slice(nl + 1);
       if (!line.trim()) continue;
       try {
-        processEvent(JSON.parse(line), projectHash);
+        processEvent(JSON.parse(line), projectHash, filePath);
       } catch (e) {
         // Skip malformed lines (partial writes)
       }
@@ -906,7 +930,7 @@ app.get('/api/sessions', (req, res) => {
     // An agent's finish notification is keyed by its agentId, so the names
     // collected for background tasks name subagents too.
     const subagentList = Object.values(session.subagents)
-      .map(sub => ({ ...sub, status: deriveSubagentStatus(sub), name: session.taskNames[sub.agentId] || '' }))
+      .map(sub => ({ ...sub, status: deriveSubagentStatus(sub, session), name: session.taskNames[sub.agentId] || sub.description || '' }))
       .sort((a, b) => {
         if ((a.status === 'thinking') !== (b.status === 'thinking')) return a.status === 'thinking' ? -1 : 1;
         return new Date(b.lastEventAt || 0) - new Date(a.lastEventAt || 0);
@@ -1189,7 +1213,7 @@ app.get('/api/sessions/:id/subagents/:agentId', async (req, res) => {
     agentId,
     agentType: sub.agentType,
     model: sub.model,
-    status: deriveSubagentStatus(sub),
+    status: deriveSubagentStatus(sub, session),
     task: task || sub.task,
     tokensOut: sub.tokensOut,
     toolCount: sub.toolCount,

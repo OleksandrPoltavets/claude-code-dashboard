@@ -765,8 +765,8 @@
           e('span', { className: 'subagent-dot ' + sub.status }),
           e('span', { className: 'subagent-status ' + sub.status }, label),
           // A name says it all and the type is one line down in the detail, so
-          // the type only labels a row that has no name yet - a running agent,
-          // whose name arrives with its finish notification.
+          // the type only labels a row that has no name - an agent launched
+          // without a meta.json description.
           !sub.name && sub.agentType
             ? e('span', { className: 'subagent-type' }, sub.agentType + ' \u00b7')
             : null,

@@ -77,8 +77,14 @@ Code changes.
 - **A subagent transcript lives one directory deeper** than the session log, at
   `<hash>/<session>/subagents/agent-<id>.jsonl`. Its events would otherwise set the
   session's project label to `subagents`.
-- **A running subagent cannot be named.** Nothing in its transcript points back to the
-  call that launched it, so it is labelled by type until its finish notification arrives.
+- **A subagent's name is in `agent-<id>.meta.json`** beside its transcript, written at
+  launch: `agentType`, `description`, `toolUseId`, `model`. Nothing in the transcript
+  itself names it. The finish notification's name still wins when it arrives.
+- **A subagent is done when its last reply has a `stop_reason` other than `tool_use`**
+  (`end_turn` in practice). Streamed parts carry `stop_reason: null`. Silence is not a
+  signal: a subagent running a test loop wrote nothing for 77s, and the old 15-second
+  window showed it `done` while it worked. The 10-minute window now only catches an
+  agent killed before its final reply.
 - **`tool_result.content` is a string on most tools and an array of blocks on some.**
 - **Reasoning effort is `effort` on every assistant event** (`low`/`medium`/`high`).
   `perTurnEffort` sits beside it as a single-turn override and is `null` unless set, so
