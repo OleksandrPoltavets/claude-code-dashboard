@@ -789,13 +789,16 @@ function liveProcesses() {
   if (Date.now() - liveCache.at < 1000) return liveCache.value;
   let value = null;
   try {
-    value = { ids: new Set(), cwds: new Set() };
+    value = { ids: new Set(), cwds: new Set(), busy: new Set() };
     for (const name of fs.readdirSync(LIVE_DIR)) {
       if (!name.endsWith('.json')) continue;
       try {
         const d = JSON.parse(fs.readFileSync(path.join(LIVE_DIR, name), 'utf8'));
         process.kill(d.pid, 0); // throws when the process is gone
         value.ids.add(d.sessionId);
+        // 'busy' while a turn runs, 'idle' otherwise. A long tool call writes
+        // nothing to the log, so this is the only sign it is still working.
+        if (d.status === 'busy') value.busy.add(d.sessionId);
         // Only an SDK process needs the folder match. Counting every live
         // process's folder kept a closed session open while a new one ran
         // in the same project.
@@ -825,6 +828,10 @@ function deriveStatus(session) {
   // Check for error in recent log
   const lastLogs = session.recentLog.slice(-3);
   if (lastLogs.some(l => l.type === 'error')) return 'error';
+
+  // The process says it is mid-turn, however long the log has been silent.
+  const live = liveProcesses();
+  if (live && live.busy.has(session.sessionId)) return 'thinking';
 
   // A turn that ended in text with no tool call is a question or a report: the
   // session is waiting for you, and stays waiting until you come back to it.
@@ -980,9 +987,13 @@ app.get('/api/sessions', (req, res) => {
   // Idle sessions: only show the most recent per project.
   // Grouping is by working directory, not by the display label: the label is
   // the folder name alone, and two projects can share one.
+  // An idle session whose process is still running keeps its own card too: it
+  // is a terminal you have open, and folding it hid one of two live sessions.
   const groupKey = s => s.cwd || s.label || s.sessionId;
-  const active = all.filter(s => s.status !== 'idle');
-  const idle = all.filter(s => s.status === 'idle');
+  const live = liveProcesses();
+  const ownCard = s => s.status !== 'idle' || (live && live.ids.has(s.sessionId));
+  const active = all.filter(ownCard);
+  const idle = all.filter(s => !ownCard(s));
   const activeGroups = new Set(active.map(groupKey));
   const latestIdleByLabel = new Map();
   for (const s of idle) {

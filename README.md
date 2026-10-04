@@ -335,10 +335,11 @@ Fewer cards than sessions is normal. Each time you open Claude Code in a project
 each `/clear`, which starts a new session file rather than continuing the old one — you
 start another session, so a project accumulates many.
 
-**The collapse only folds idle sessions.** Of those, the newest per project gets a card.
-A `thinking` or `waiting` session always keeps its own card: one of them is working and
-the other is asking you something, and folding either away would hide the thing you
-opened the dashboard for.
+**The collapse only folds closed idle sessions.** Of those, the newest per project gets a
+card. A `thinking` or `waiting` session always keeps its own card: one of them is working
+and the other is asking you something, and folding either away would hide the thing you
+opened the dashboard for. An idle session that is still open keeps its own card too, so
+each Claude Code you have running shows.
 
 So a project can legitimately show several cards at once, for example two sessions open
 in the same folder. The `Title:` row on each card tells them apart. A session you closed
@@ -361,7 +362,7 @@ the usage row's `30 days` is the **last 30 days**.
 | Status | When |
 | --- | --- |
 | `waiting` | The last turn ended in text with no tool call — it asked you something, or it finished and is waiting. Holds for 30 minutes, or until the session is closed |
-| `thinking` | Anything else within the last 2 minutes — a tool call, a thinking block, input you just sent |
+| `thinking` | Claude Code says the session is mid-turn, or anything else within the last 2 minutes — a tool call, a thinking block, input you just sent |
 | `idle` | Neither of the above |
 | `idle-stale` | Idle, and closed or nothing today |
 
@@ -379,6 +380,10 @@ The two windows are different lengths on purpose, and neither is short.
 gaps in real logs: median 1s, p90 10s, p95 19s, **p99 240s**. A long tool call writes
 nothing at all while it runs. 6.2% of gaps are over 15 seconds, so a short window reports
 a busy session as idle.
+
+Even 2 minutes is too short for a long command. The file in `~/.claude/sessions/`
+(see below) also carries `status: busy` for as long as a turn runs. A busy session reads
+`thinking` however long its log has been silent.
 
 **"Waiting for you" is a state, not a burst.** A session that asked you a question ten
 minutes ago is still waiting. It expires after 30 minutes only so that yesterday's

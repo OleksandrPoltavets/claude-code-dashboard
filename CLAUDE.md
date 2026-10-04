@@ -114,6 +114,10 @@ Code changes.
   applies only to a session whose own log says `entrypoint: sdk-*`: an IDE's ACP agent
   (RubyMine's `claude-agent-acp`) can outlive the IDE by weeks, and it kept every CLI
   session in its folder `waiting`.
+- **The same `~/.claude/sessions/<pid>.json` has `status`: `busy` or `idle`.** `busy`
+  holds for the whole turn, including a long tool call that writes nothing to the log.
+  A busy session reads `thinking` however long it has been silent; without that, a
+  7-minute Bash read `idle` and was folded behind another session in the same folder.
 - **Tool output carries terminal colour escapes**, which reach the feed as literal
   `[90m` noise unless stripped.
 
@@ -131,7 +135,8 @@ these lengths:
 
 **Status decides whether a session is collapsed.** The newest-per-project fold in
 `GET /api/sessions` applies to `idle` sessions only; `thinking` and `waiting` always keep
-their own card. That is deliberate — one is working and the other is asking you something
+their own card, and so does an idle session whose process is still running (its id is in
+`~/.claude/sessions/`). Only closed idle sessions fold. That is deliberate — one is working and the other is asking you something
 — but it means a project can legitimately show several cards, and lengthening
 `WAITING_MS` lengthens how long it does. Grouping there is keyed on the working directory,
 not the display label, because the label is a folder name and two projects can share one.
