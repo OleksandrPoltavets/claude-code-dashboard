@@ -244,7 +244,10 @@ function noteTaskNotification(session, text) {
   }
   if (!summary) return;
   const quoted = summary[1].match(/"([^"]+)"/);
-  setTaskName(session, id[1], (quoted ? quoted[1] : summary[1]).trim().substring(0, 120));
+  // The notification escapes the command as XML, so `<<` arrives as `&lt;&lt;`.
+  const name = (quoted ? quoted[1] : summary[1])
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+  setTaskName(session, id[1], name.trim().substring(0, 120));
 }
 
 function taskDir(session) {
