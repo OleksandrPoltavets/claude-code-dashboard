@@ -74,6 +74,10 @@ Code changes.
   `/tmp/claude-<uid>/<hash>/<session>/tasks/<taskId>.output`, closed with
   `[exited with code N]` or `[killed]`. The session log records only the start and a
   `queue-operation` notification when it ends.
+- **The `<session>` in that path is the id the process started with.** After `/clear`
+  the log moves to a new session id, but task output stays under the first one. The
+  log quotes the real path (`toolUseResult.outputFile`, "Output is being written to:",
+  `<output-file>`), and `noteTaskDir` takes the folder from there.
 - **A subagent transcript lives one directory deeper** than the session log, at
   `<hash>/<session>/subagents/agent-<id>.jsonl`. Its events would otherwise set the
   session's project label to `subagents`.

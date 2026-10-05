@@ -237,6 +237,7 @@ function noteTaskNotification(session, text) {
   const id = text.match(/<task-id>([A-Za-z0-9_-]+)<\/task-id>/);
   const summary = text.match(/<summary>([\s\S]*?)<\/summary>/);
   if (!id) return;
+  noteTaskDir(session, text);
   // The work a subagent left running in the background has reported back.
   for (const sub of Object.values(session.subagents)) {
     if (sub.pendingTasks) sub.pendingTasks = sub.pendingTasks.filter(t => t !== id[1]);
@@ -247,7 +248,17 @@ function noteTaskNotification(session, text) {
 }
 
 function taskDir(session) {
-  return path.join(TASK_ROOT, session.projectHash, session.sessionId, 'tasks');
+  return path.join(TASK_ROOT, session.projectHash, session.taskSessionId || session.sessionId, 'tasks');
+}
+
+// A process keeps writing task output under the session id it started with, so
+// after /clear the folder is named after an earlier session. The log quotes the
+// real path, and only its session id is taken from it.
+const TASK_PATH_RE = /[\/\\]([^\/\\\s<>"]+)[\/\\]([0-9a-f-]{36})[\/\\]tasks[\/\\][A-Za-z0-9_-]+\.output/;
+
+function noteTaskDir(session, text) {
+  const m = typeof text === 'string' && text.match(TASK_PATH_RE);
+  if (m && m[1] === session.projectHash) session.taskSessionId = m[2];
 }
 
 function describeTask(name, st, tail) {
@@ -343,6 +354,7 @@ function getOrCreateSession(sessionId) {
       version: '',
       subagents: {}, // agentId -> see the subagent block in processEvent
       taskNames: {}, // background task id -> human name, see noteTaskNotification
+      taskSessionId: '', // session id the task output folder is named after, see noteTaskDir
       toolDetails: new Map(), // tool_use_id -> see recordToolCall/recordToolResult
     });
     seenMessageIds.set(sessionId, new Map()); // messageId -> {in, out, cacheCreate, cacheRead}
@@ -750,11 +762,13 @@ function processEvent(event, projectHash, filePath) {
     }
   }
   if (event.type === 'user' && Array.isArray(content)) {
+    if (event.toolUseResult) noteTaskDir(session, event.toolUseResult.outputFile);
     for (const block of content) {
       if (block.type !== 'tool_result') continue;
       recordToolResult(session, block, event, ts);
       // The tool result is also what ties the launching call to the task id.
       if (typeof block.content !== 'string') continue;
+      noteTaskDir(session, block.content);
       const m = block.content.match(/background with ID: ([A-Za-z0-9_-]+)/);
       if (!m) continue;
       setTaskName(session, m[1], pendingTaskNames.get(block.tool_use_id));
